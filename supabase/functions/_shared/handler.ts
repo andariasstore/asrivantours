@@ -47,7 +47,7 @@ async function currentUser(req: Request, admin: ReturnType<typeof adminClient>) 
 }
 
 const bytesToHex = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-const asBytea = (bytes: Uint8Array) => `\\\\x${bytesToHex(bytes)}`;
+const asBytea = (bytes: Uint8Array) => `\\x${bytesToHex(bytes)}`;
 async function sha256(value: string) {
   return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
 }
@@ -62,7 +62,7 @@ function randomToken() {
 function sameBytes(a: Uint8Array | string | null, b: Uint8Array) {
   if (!a) return false;
   const left = typeof a === "string"
-    ? (a.startsWith("\\\\x")
+    ? (a.startsWith("\\x")
       ? new Uint8Array((a.slice(2).match(/.{1,2}/g) ?? []).map((part) => parseInt(part, 16)))
       : new TextEncoder().encode(a))
     : a;
