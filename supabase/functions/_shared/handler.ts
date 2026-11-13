@@ -384,7 +384,7 @@ async function handleContract(contract: string, req: Request) {
             channelLocked: true,
           });
         }
-        const requestedChannel = String(body.preferredChannel ?? env("MIDTRANS_DEFAULT_PAYMENT_TYPE")).trim();
+        const requestedChannel = existingInvoice?.payment_channel ?? String(body.preferredChannel ?? env("MIDTRANS_DEFAULT_PAYMENT_TYPE")).trim();
         if (!requestedChannel) return fail(503, "PAYMENT_CHANNEL_NOT_CONFIGURED", "Pilih dan konfigurasi payment channel Midtrans yang aktif pada merchant.");
         const channelConfig = parseJson(env("MIDTRANS_CHANNEL_CONFIG_JSON", "{}"), {}) as Record<string, unknown>;
         const orderId = existingInvoice?.order_id ?? booking.booking_reference;
@@ -397,7 +397,6 @@ async function handleContract(contract: string, req: Request) {
             phone: booking.contact_data?.phone,
           },
           ...(channelConfig[existingInvoice?.payment_channel ?? requestedChannel] as Record<string, unknown> ?? {}),
-          ...(env("MIDTRANS_NOTIFICATION_URL") ? { custom_field1: "ASRIVA", custom_field2: booking.booking_reference } : {}),
         };
         const claim = await admin.rpc("asriva_claim_payment_invoice", {
           p_booking_id: booking.id,
