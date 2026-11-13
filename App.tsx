@@ -2681,10 +2681,29 @@ const BookingReviewPage = () => {
 // ============================================================================
 
 const BookingConfirmationPage = ({ bookingRef }) => {
-  const { activeBookings, navigate } = useApp();
-  // A booking reference is an identifier, not an authorization credential.
-  // Only show data returned by booking creation or by the verified lookup flow.
+  const { activeBookings, navigate, services, saveBookingRecord } = useApp();
+  // A booking reference is not authorization; recovery requires the opaque verified access token.
   const booking = activeBookings[bookingRef] || null;
+  const [restoring, setRestoring] = useState(false);
+
+  useEffect(() => {
+    if (booking) return;
+    const bookingAccessToken = readBookingAccessToken(bookingRef);
+    if (!bookingAccessToken) return;
+    let active = true;
+    setRestoring(true);
+    services.bookingService.lookupBooking({ bookingReference: bookingRef, bookingAccessToken })
+      .then((res) => {
+        if (active && res?.booking) saveBookingRecord(res.booking, res.bookingAccessToken, res.accessExpiresAt);
+      })
+      .catch(() => {})
+      .finally(() => { if (active) setRestoring(false); });
+    return () => { active = false; };
+  }, [booking, bookingRef, services, saveBookingRecord]);
+
+  if (!booking && restoring) {
+    return <div className="max-w-3xl mx-auto px-4 py-12 text-center text-sm text-slate-600">Memulihkan detail booking terverifikasi...</div>;
+  }
 
   if (!booking) {
     return (
@@ -2779,9 +2798,25 @@ const BookingConfirmationPage = ({ bookingRef }) => {
 // ============================================================================
 
 const CheckoutPage = ({ bookingRef }) => {
-  const { activeBookings, services, navigate, openIntegrationModal, addToast } = useApp();
+  const { activeBookings, services, navigate, openIntegrationModal, addToast, saveBookingRecord } = useApp();
   const booking = activeBookings[bookingRef] || null;
+  const [restoringBooking, setRestoringBooking] = useState(false);
   const integrationStatus = services.paymentService.getIntegrationStatus();
+
+  useEffect(() => {
+    if (booking) return;
+    const bookingAccessToken = readBookingAccessToken(bookingRef);
+    if (!bookingAccessToken) return;
+    let active = true;
+    setRestoringBooking(true);
+    services.bookingService.lookupBooking({ bookingReference: bookingRef, bookingAccessToken })
+      .then((res) => {
+        if (active && res?.booking) saveBookingRecord(res.booking, res.bookingAccessToken, res.accessExpiresAt);
+      })
+      .catch(() => {})
+      .finally(() => { if (active) setRestoringBooking(false); });
+    return () => { active = false; };
+  }, [booking, bookingRef, services, saveBookingRecord]);
 
   const [initiating, setInitiating] = useState(false);
   const [paymentSession, setPaymentSession] = useState(null);
@@ -2843,6 +2878,10 @@ const CheckoutPage = ({ bookingRef }) => {
       setInitiating(false);
     }
   };
+
+  if (!booking && restoringBooking) {
+    return <div className="max-w-3xl mx-auto px-4 py-12 text-center text-sm text-slate-600">Memulihkan akses booking terverifikasi...</div>;
+  }
 
   if (!booking || booking.bookingReference !== bookingRef) {
     return (
@@ -3207,8 +3246,28 @@ const MyBookingsPage = () => {
 };
 
 const BookingDetailPage = ({ bookingRef }) => {
-  const { activeBookings, navigate } = useApp();
+  const { activeBookings, navigate, services, saveBookingRecord } = useApp();
   const booking = activeBookings[bookingRef] || null;
+  const [restoring, setRestoring] = useState(false);
+
+  useEffect(() => {
+    if (booking) return;
+    const bookingAccessToken = readBookingAccessToken(bookingRef);
+    if (!bookingAccessToken) return;
+    let active = true;
+    setRestoring(true);
+    services.bookingService.lookupBooking({ bookingReference: bookingRef, bookingAccessToken })
+      .then((res) => {
+        if (active && res?.booking) saveBookingRecord(res.booking, res.bookingAccessToken, res.accessExpiresAt);
+      })
+      .catch(() => {})
+      .finally(() => { if (active) setRestoring(false); });
+    return () => { active = false; };
+  }, [booking, bookingRef, services, saveBookingRecord]);
+
+  if (!booking && restoring) {
+    return <div className="max-w-3xl mx-auto px-4 py-12 text-center text-sm text-slate-600">Memulihkan detail booking terverifikasi...</div>;
+  }
 
   if (!booking) {
     return (
