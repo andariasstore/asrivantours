@@ -2664,7 +2664,19 @@ const CheckoutPage = ({ bookingRef }) => {
   const [initiating, setInitiating] = useState(false);
   const [paymentSession, setPaymentSession] = useState(null);
   const [error, setError] = useState(null);
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [idempotencyKey] = useState(() => {
+    const storageKey = `asriva:payment:${bookingRef}:idempotency`;
+    try {
+      const existingKey = window.localStorage.getItem(storageKey);
+      if (existingKey) return existingKey;
+      const newKey = crypto.randomUUID();
+      window.localStorage.setItem(storageKey, newKey);
+      return newKey;
+    } catch {
+      // Keep checkout usable when browser storage is unavailable.
+      return crypto.randomUUID();
+    }
+  });
 
   const handleInitiateMidtrans = async () => {
     setInitiating(true);
