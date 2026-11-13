@@ -16,6 +16,9 @@ const fail = (status: number, code: string, message: string) =>
   json({ success: false, error: code, message }, status);
 
 const env = (name: string, fallback = "") => Deno.env.get(name) ?? fallback;
+const todayJakarta = () => new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit",
+}).format(new Date());
 const parseJson = (value: string, fallback: unknown = {}) => {
   try { return JSON.parse(value); } catch { return fallback; }
 };
@@ -228,7 +231,7 @@ async function handleContract(contract: string, req: Request) {
       if (productIds.length) {
         const { data: slots, error: slotsError } = await admin.from("asriva_inventory_slots")
           .select("product_id,capacity_total,reserved_count")
-          .in("product_id", productIds).eq("is_active", true).limit(1000);
+          .in("product_id", productIds).eq("is_active", true).gte("start_date", todayJakarta()).limit(1000);
         if (slotsError) throw slotsError;
         availabilityByProduct = (slots ?? []).reduce((acc: Record<string, number>, slot: any) => {
           acc[slot.product_id] = (acc[slot.product_id] ?? 0) +
@@ -255,7 +258,7 @@ async function handleContract(contract: string, req: Request) {
         admin.from("asriva_products").select("*").eq("is_published", true)
           .eq("category", row.category).neq("id", productId).limit(6),
         admin.from("asriva_inventory_slots").select("capacity_total,reserved_count")
-          .eq("product_id", productId).eq("is_active", true).limit(1000),
+          .eq("product_id", productId).eq("is_active", true).gte("start_date", todayJakarta()).limit(1000),
       ]);
       if (reviewError) throw reviewError;
       if (relatedError) throw relatedError;
@@ -278,6 +281,9 @@ async function handleContract(contract: string, req: Request) {
       const category = requireText(body.category, "category");
       const startDate = requireText(body.startDate, "startDate", 10);
       const endDate = body.endDate ? requireText(body.endDate, "endDate", 10) : null;
+      if (startDate < todayJakarta() || (endDate && endDate < startDate)) {
+        return json({ success: true, available: false, remainingCapacity: 0, message: "Tanggal perjalanan tidak valid atau sudah lewat." });
+      }
       const travelers = requireNumber(body.travelers, "travelers", 1, 50);
       const optionId = body.optionId ? String(body.optionId) : null;
       const pickupLocation = body.pickupLocation ? String(body.pickupLocation) : null;
