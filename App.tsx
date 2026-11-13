@@ -30,7 +30,7 @@ import {
  * @typedef {'tour_packages' | 'hotels' | 'flights' | 'transportation' | 'activities'} ProductCategory
  * @typedef {'draft' | 'pending_confirmation' | 'confirmed' | 'pending_payment' | 'paid' | 'cancelled' | 'expired'} BookingStatusType
  * @typedef {'unpaid' | 'pending' | 'settlement' | 'capture' | 'failed' | 'expired' | 'refund_pending' | 'refunded'} PaymentStatusType
- * @typedef {'UNCONFIGURED' | 'SNAP' | 'CORE_API'} MidtransIntegrationMethod
+ * @typedef {'UNCONFIGURED' | 'CORE_API'} MidtransIntegrationMethod
  */
 
 const CATEGORIES = [
@@ -149,11 +149,11 @@ const REQUIRED_BACKEND_CONTRACTS = [
   {
     id: 'payments.initiate',
     service: 'paymentService',
-    description: 'Inisiasi transaksi pembayaran Midtrans (menghasilkan Snap Token atau instruksi Core API)',
+    description: 'Inisiasi transaksi pembayaran Midtrans Core API (instruksi kanal pembayaran)',
     method: 'POST',
     envKey: 'VITE_EDGE_INITIATE_PAYMENT',
     expectedRequest: '{ bookingReference: string, idempotencyKey: string, preferredChannel?: string }',
-    expectedResponse: '{ mode: "SNAP" | "CORE_API", orderId: string, snapToken?: string, redirectUrl?: string, coreApiInstructions?: object }',
+    expectedResponse: '{ mode: "CORE_API", orderId: string, redirectUrl?: string, coreApiInstructions: object }',
   },
   {
     id: 'payments.verifyStatus',
@@ -294,10 +294,10 @@ function createAsrivaServices(runtimeConfig, addAuditLog) {
         method: midtransMethod,
       }),
       initiatePayment: (paymentPayload) => {
-        if (midtransMethod === 'UNCONFIGURED') {
+        if (midtransMethod !== 'CORE_API') {
           throw new ApiIntegrationError(
             'CONTRACT_UNCONFIGURED',
-            'Metode integrasi Midtrans (Snap atau Core API) belum dikonfirmasi pada pengaturan sistem.',
+            'Integrasi pembayaran ASRIVA ditetapkan menggunakan Midtrans CORE_API. Konfigurasikan metode tersebut sebelum melanjutkan.',
             'payments.initiate'
           );
         }
@@ -960,9 +960,8 @@ const BackendIntegrationModal = ({ open, onClose }) => {
                       onChange={(e) => setFormState({ ...formState, midtransMethod: e.target.value })}
                       className="w-full h-10 px-3 rounded-xl border border-slate-300 text-sm bg-white"
                     >
-                      <option value="UNCONFIGURED">Belum Dikonfirmasi (Menunggu Keputusan)</option>
-                      <option value="SNAP">Midtrans Snap (Popup / Redirect)</option>
-                      <option value="CORE_API">Midtrans Core API (Custom UI / VA / QRIS)</option>
+                      <option value="UNCONFIGURED">Belum Dikonfirmasi</option>
+                      <option value="CORE_API">Midtrans Core API (VA / QRIS / kanal tersedia)</option>
                     </select>
                   </div>
                 </div>
@@ -2385,6 +2384,8 @@ const BookingReviewPage = () => {
         endDate: schedule.endDate || undefined,
         travelers: schedule.travelers,
         optionId: schedule.optionId || undefined,
+        pickupLocation: schedule.pickupLocation || undefined,
+        timeSlot: schedule.timeSlot || undefined,
       });
 
       if (!freshQuote?.available) {
@@ -2673,30 +2674,26 @@ const CheckoutPage = ({ bookingRef }) => {
         bookingReference: bookingRef,
         idempotencyKey,
       });
-      setPaymentSession(res);
-
-      // If Midtrans Snap is confirmed and window.snap is loaded with Client Key
-      if (res?.mode === 'SNAP' && res?.snapToken && window.snap) {
-        window.snap.pay(res.snapToken, {
-          onSuccess: () => {
-            // IMPORTANT: Frontend callback is UX-only; navigate to result page which queries backend verification
-            navigate(`/payment/pending?ref=${encodeURIComponent(bookingRef)}&order_id=${encodeURIComponent(res.orderId || '')}`);
-          },
-          onPending: () => {
-            navigate(`/payment/pending?ref=${encodeURIComponent(bookingRef)}&order_id=${encodeURIComponent(res.orderId || '')}`);
-          },
-          onError: () => {
-            navigate(`/payment/failed?ref=${encodeURIComponent(bookingRef)}&order_id=${encodeURIComponent(res.orderId || '')}`);
-          },
-          onClose: () => {
-            addToast({
-              type: 'info',
-              title: 'Jendela Pembayaran Ditutup',
-              message: 'Anda dapat melanjutkan pembayaran atau memeriksa status transaksi melalui server.',
-            });
-          },
-        });
+      if (res?.mode !== 'CORE_API' || !res?.orderId) {
+        throw new ApiIntegrationError(
+          'VALIDATION_ERROR',
+          'Backend tidak mengembalikan sesi Midtrans CORE_API dengan order ID yang valid.',
+          'payments.initiate',
+          res
+        );
       }
+      if (
+        (!res.coreApiInstructions || typeof res.coreApiInstructions !== 'object') &&
+        !res.redirectUrl
+      ) {
+        throw new ApiIntegrationError(
+          'VALIDATION_ERROR',
+          'Sesi pembayaran dibuat, tetapi backend belum mengirim instruksi pembayaran atau URL pengalihan.',
+          'payments.initiate',
+          res
+        );
+      }
+      setPaymentSession(res);
     } catch (err) {
       setError(err);
     } finally {
@@ -2713,12 +2710,12 @@ const CheckoutPage = ({ bookingRef }) => {
             <p className="text-xs text-slate-500 font-mono mt-1">Booking Ref: {bookingRef}</p>
           </div>
           <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-200">
-            Mode: {integrationStatus.environment} • {integrationStatus.method}
+            Mode: {integrationStatus.environment} • Midtrans CORE_API
           </span>
         </div>
 
         {/* Unresolved Midtrans Method Guard */}
-        {integrationStatus.method === 'UNCONFIGURED' && (
+        {integrationStatus.method !== 'CORE_API' && (
           <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 space-y-2.5">
             <div className="flex items-start gap-2.5">
               <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
@@ -2727,7 +2724,7 @@ const CheckoutPage = ({ bookingRef }) => {
                   Metode Integrasi Midtrans Belum Dikonfirmasi
                 </p>
                 <p>
-                  Sesuai arsitektur ASRIVA, pemilihan antara <strong>Midtrans Snap</strong> atau <strong>Midtrans Core API</strong> harus dikonfirmasi terlebih dahulu. Aplikasi tidak akan melakukan simulasi pembayaran palsu.
+                  ASRIVA menggunakan <strong>Midtrans Core API</strong>. Konfigurasikan metode CORE_API pada pengaturan integrasi sebelum membuat transaksi. Aplikasi tidak menjalankan simulasi pembayaran.
                 </p>
               </div>
             </div>
@@ -2736,7 +2733,7 @@ const CheckoutPage = ({ bookingRef }) => {
               onClick={openIntegrationModal}
               className="px-4 py-2 rounded-xl bg-amber-900 text-white text-xs font-semibold hover:bg-amber-950"
             >
-              Konfirmasi Metode Midtrans & Client Key
+              Konfigurasi Midtrans CORE_API
             </button>
           </div>
         )}
@@ -2762,8 +2759,20 @@ const CheckoutPage = ({ bookingRef }) => {
 
         {paymentSession && (
           <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 space-y-3 text-xs text-blue-950">
-            <p className="font-bold text-sm">Sesi Transaksi Midtrans Dibuat oleh Backend</p>
+            <p className="font-bold text-sm">Instruksi Pembayaran Midtrans CORE_API</p>
             <p className="font-mono">Order ID: {paymentSession.orderId}</p>
+            {paymentSession.coreApiInstructions && typeof paymentSession.coreApiInstructions === 'object' && (
+              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {Object.entries(paymentSession.coreApiInstructions).filter(([, value]) => value !== null && value !== undefined && value !== '').map(([key, value]) => (
+                  <div key={key} className="rounded-lg border border-blue-200 bg-white/70 p-3 min-w-0">
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">{key.replace(/([A-Z])/g, ' $1').replace(/[_-]/g, ' ')}</dt>
+                    <dd className="mt-1 break-words font-semibold text-sm text-slate-900">
+                      {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
             {paymentSession.redirectUrl && (
               <a
                 href={paymentSession.redirectUrl}
@@ -2794,11 +2803,11 @@ const CheckoutPage = ({ bookingRef }) => {
 
         <button
           type="button"
-          disabled={initiating || integrationStatus.method === 'UNCONFIGURED'}
+          disabled={initiating || integrationStatus.method !== 'CORE_API'}
           onClick={handleInitiateMidtrans}
           className="w-full h-12 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-semibold text-sm transition-colors disabled:opacity-40"
         >
-          {initiating ? 'Membuat Transaksi Midtrans...' : 'Bayar Sekarang melalui Midtrans'}
+          {initiating ? 'Membuat Transaksi Midtrans...' : 'Buat Instruksi Pembayaran Midtrans'}
         </button>
       </div>
     </div>
@@ -3728,25 +3737,7 @@ export default function App() {
     [runtimeConfig, addAuditLog]
   );
 
-  // Load Midtrans Snap script dynamically ONLY when SNAP is confirmed and Client Key is provided
-  useEffect(() => {
-    if (runtimeConfig.midtransMethod !== 'SNAP' || !runtimeConfig.midtransClientKey) return;
-    const scriptId = 'midtrans-snap-sdk';
-    const existing = document.getElementById(scriptId);
-    if (existing) existing.remove();
-
-    const script = document.createElement('script');
-    script.id = scriptId;
-    script.src =
-      runtimeConfig.midtransEnvironment === 'PRODUCTION'
-        ? 'https://app.midtrans.com/snap/snap.js'
-        : 'https://app.sandbox.midtrans.com/snap/snap.js';
-    script.setAttribute('data-client-key', runtimeConfig.midtransClientKey);
-    script.async = true;
-    document.body.appendChild(script);
-  }, [runtimeConfig.midtransMethod, runtimeConfig.midtransClientKey, runtimeConfig.midtransEnvironment]);
-
-  // Application State
+   // Application State
   const [user, setUser] = useState(null);
   const [bookingDraft, setBookingDraft] = useState(null);
   const [activeBookings, setActiveBookings] = useState({});
