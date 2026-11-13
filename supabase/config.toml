@@ -1,5 +1,3 @@
-project_id = "asrivantours"
-
 [api]
 enabled = true
 schemas = ["public", "graphql_public"]
