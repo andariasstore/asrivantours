@@ -58,7 +58,7 @@ An inventory slot must match the requested product, start/end date, option, pick
 - Guest lookup requires booking reference plus the exact email or phone entered at booking. The backend stores SHA-256 hashes for comparison and applies an IP-based limit of 30 lookup attempts per 15-minute window.
 - Successful contact verification issues a high-entropy opaque `bookingAccessToken`; only its hash is stored in PostgreSQL. The token expires according to `ASRIVA_BOOKING_ACCESS_TTL_SECONDS`. A valid token can restore booking details after a page refresh without asking the guest to re-enter contact data.
 - Payment initiation and status verification require either a verified Supabase user who owns the booking or a valid booking access token.
-- Booking creation consumes a short-lived quote token and reserves capacity in one PostgreSQL transaction. Duplicate booking requests with the same idempotency key return the existing booking.
+- Booking creation consumes a short-lived quote token and reserves capacity in one PostgreSQL transaction. The quote is unique to one booking; a retry with the same request key or the same consumed quote and matching payload returns the existing booking.
 - The database enforces one invoice row per booking. The first payment channel is locked. Retries reuse the same Midtrans order ID, invoice and channel; they do not create a second invoice.
 
 ## Midtrans CORE_API
