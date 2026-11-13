@@ -186,7 +186,9 @@ begin
   if found then
     if v_existing.booking_data->>'productId' is distinct from p_booking_data->>'productId'
        or v_existing.booking_data->'schedule' is distinct from p_booking_data->'schedule'
-       or v_existing.booking_data->'contact' is distinct from p_booking_data->'contact' then
+       or v_existing.booking_data->'contact' is distinct from p_booking_data->'contact'
+       or v_existing.booking_data->'travelers' is distinct from p_booking_data->'travelers'
+       or v_existing.booking_data->>'specialRequests' is distinct from p_booking_data->>'specialRequests' then
       raise exception 'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD' using errcode = 'P0001';
     end if;
     update public.asriva_bookings
@@ -218,7 +220,9 @@ begin
     if found then
       if v_existing.booking_data->>'productId' is distinct from p_booking_data->>'productId'
          or v_existing.booking_data->'schedule' is distinct from p_booking_data->'schedule'
-         or v_existing.booking_data->'contact' is distinct from p_booking_data->'contact' then
+         or v_existing.booking_data->'contact' is distinct from p_booking_data->'contact'
+       or v_existing.booking_data->'travelers' is distinct from p_booking_data->'travelers'
+       or v_existing.booking_data->>'specialRequests' is distinct from p_booking_data->>'specialRequests' then
         raise exception 'QUOTE_ALREADY_USED_WITH_DIFFERENT_PAYLOAD' using errcode = 'P0001';
       end if;
       update public.asriva_bookings
