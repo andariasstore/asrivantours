@@ -126,7 +126,7 @@ const REQUIRED_BACKEND_CONTRACTS = [
     method: 'POST',
     envKey: 'VITE_EDGE_VALIDATE_AVAILABILITY',
     expectedRequest: '{ productId: string, category: string, startDate: string, endDate?: string, travelers: number, optionId?: string, pickupLocation?: string, timeSlot?: string }',
-    expectedResponse: '{ available: boolean, remainingCapacity?: number, unitPrice: number, subtotal: number, taxesAndFees: number, totalAmount: number, currency: "IDR", quoteToken?: string }',
+    expectedResponse: '{ available: boolean, remainingCapacity?: number, unitPrice: number, subtotal: number, taxesAndFees: number, totalAmount: number, currency: "IDR", quoteToken: string when available }',
   },
   {
     id: 'bookings.create',
