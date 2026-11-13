@@ -125,7 +125,7 @@ const REQUIRED_BACKEND_CONTRACTS = [
     description: 'Validasi ketersediaan kapasitas & kalkulasi harga resmi sisi server',
     method: 'POST',
     envKey: 'VITE_EDGE_VALIDATE_AVAILABILITY',
-    expectedRequest: '{ productId: string, category: string, startDate: string, endDate?: string, travelers: number, optionId?: string }',
+    expectedRequest: '{ productId: string, category: string, startDate: string, endDate?: string, travelers: number, optionId?: string, pickupLocation?: string, timeSlot?: string }',
     expectedResponse: '{ available: boolean, remainingCapacity?: number, unitPrice: number, subtotal: number, taxesAndFees: number, totalAmount: number, currency: "IDR", quoteToken?: string }',
   },
   {
@@ -134,7 +134,7 @@ const REQUIRED_BACKEND_CONTRACTS = [
     description: 'Membuat reservasi terkonfirmasi setelah validasi ulang ketersediaan & harga',
     method: 'POST',
     envKey: 'VITE_EDGE_CREATE_BOOKING',
-    expectedRequest: '{ idempotencyKey: string, productId: string, schedule: object, contact: object, travelers: array, specialRequests?: string }',
+    expectedRequest: '{ idempotencyKey: string, productId: string, schedule: object, contact: object, travelers: array, specialRequests?: string, quoteToken: string }',
     expectedResponse: '{ booking: BookingRecord }',
   },
   {
@@ -175,6 +175,73 @@ class ApiIntegrationError extends Error {
     this.details = details;
   }
 }
+
+const isPlainRecord = (value) =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const assertContractResponse = (contractId, data) => {
+  const invalid = (message) => {
+    throw new ApiIntegrationError('VALIDATION_ERROR', message, contractId, data);
+  };
+  if (!isPlainRecord(data)) invalid('Backend mengembalikan format respons yang tidak valid.');
+
+  switch (contractId) {
+    case 'products.list':
+      if (!Array.isArray(data.items) || typeof data.total !== 'number' || !Number.isFinite(data.total)) {
+        invalid('Respons daftar produk harus memiliki items berupa array dan total berupa angka.');
+      }
+      break;
+    case 'products.detail':
+      if (!isPlainRecord(data.product) || !Array.isArray(data.verifiedReviews) || !Array.isArray(data.relatedProducts)) {
+        invalid('Respons detail produk tidak memenuhi kontrak product, verifiedReviews, dan relatedProducts.');
+      }
+      break;
+    case 'availability.validate':
+      if (typeof data.available !== 'boolean') {
+        invalid('Respons validasi ketersediaan harus menyertakan available bertipe boolean.');
+      }
+      if (data.available) {
+        const amounts = ['unitPrice', 'subtotal', 'taxesAndFees', 'totalAmount'];
+        if (
+          amounts.some((key) => typeof data[key] !== 'number' || !Number.isFinite(data[key]) || data[key] < 0) ||
+          data.currency !== 'IDR' ||
+          typeof data.quoteToken !== 'string' ||
+          !data.quoteToken.trim()
+        ) {
+          invalid('Quote tersedia harus menyertakan nilai harga IDR yang valid dan quoteToken.');
+        }
+      }
+      break;
+    case 'bookings.create':
+    case 'bookings.lookup':
+      if (!isPlainRecord(data.booking) || typeof data.booking.bookingReference !== 'string' || !data.booking.bookingReference.trim()) {
+        invalid('Respons booking harus menyertakan objek booking dengan bookingReference yang valid.');
+      }
+      break;
+    case 'payments.initiate':
+      if (
+        data.mode !== 'CORE_API' ||
+        typeof data.orderId !== 'string' ||
+        !data.orderId.trim() ||
+        ((!isPlainRecord(data.coreApiInstructions)) && typeof data.redirectUrl !== 'string')
+      ) {
+        invalid('Respons pembayaran harus berupa sesi CORE_API dengan orderId dan instruksi atau redirect URL.');
+      }
+      break;
+    case 'payments.verifyStatus':
+      if (
+        !Object.prototype.hasOwnProperty.call(BOOKING_STATUS_META, data.bookingStatus) ||
+        !Object.prototype.hasOwnProperty.call(PAYMENT_STATUS_META, data.paymentStatus) ||
+        !isPlainRecord(data.transaction)
+      ) {
+        invalid('Respons verifikasi pembayaran memiliki status booking, status pembayaran, atau transaction yang tidak valid.');
+      }
+      break;
+    default:
+      break;
+  }
+  return data;
+};
 
 /**
  * Centralized Service Layer Factory
@@ -251,14 +318,16 @@ function createAsrivaServices(runtimeConfig, addAuditLog) {
         );
       }
 
+      const validatedData = assertContractResponse(contractId, data);
+
       addAuditLog({
         timestamp: new Date().toISOString(),
         contractId,
         status: 'SUCCESS',
-        message: 'Permintaan berhasil diproses oleh backend.',
+        message: 'Permintaan berhasil diproses dan lolos validasi kontrak.',
       });
 
-      return data;
+      return validatedData;
     } catch (err) {
       if (err instanceof ApiIntegrationError) throw err;
       addAuditLog({
