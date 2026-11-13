@@ -153,6 +153,11 @@ begin
   for update;
 
   if found then
+    if v_existing.booking_data->>'productId' is distinct from p_booking_data->>'productId'
+       or v_existing.booking_data->'schedule' is distinct from p_booking_data->'schedule'
+       or v_existing.booking_data->'contact' is distinct from p_booking_data->'contact' then
+      raise exception 'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD' using errcode = 'P0001';
+    end if;
     update public.asriva_bookings
       set booking_access_token_hash = p_booking_access_token_hash,
           booking_access_expires_at = p_booking_access_expires_at,
