@@ -4037,12 +4037,13 @@ export default function App() {
 
   const saveBookingRecord = useCallback((booking, accessToken = null, accessExpiresAt = null) => {
     if (!booking?.bookingReference) return;
-    const token = accessToken || booking.bookingAccessToken || readBookingAccessToken(booking.bookingReference);
-    if (token && typeof window !== 'undefined') {
+    const freshToken = accessToken || booking.bookingAccessToken || '';
+    const token = freshToken || readBookingAccessToken(booking.bookingReference);
+    if (freshToken && typeof window !== 'undefined') {
       try {
         const expiry = accessExpiresAt ? new Date(accessExpiresAt).getTime() : Date.now() + 86400000;
         window.sessionStorage.setItem(bookingAccessStorageKey(booking.bookingReference), JSON.stringify({
-          token,
+          token: freshToken,
           expiresAt: expiry,
         }));
       } catch (error) {
