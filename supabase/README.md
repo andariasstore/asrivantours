@@ -1,6 +1,6 @@
 # ASRIVA Supabase Backend
 
-Backend source for the ASRIVA An Tours storefront. This folder contains Supabase PostgreSQL migrations and Deno Edge Functions. The application remains Midtrans **Legacy CORE_API** only; Snap is not implemented.
+Backend source for the ASRIVA An Tours storefront. This folder contains Supabase PostgreSQL migrations and Deno Edge Functions using `@supabase/supabase-js` 2.119.0. The application remains Midtrans **Legacy CORE_API** only; Snap is not implemented.
 
 ## Edge Function map
 
