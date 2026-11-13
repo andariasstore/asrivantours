@@ -3934,20 +3934,22 @@ export default function App() {
   const [runtimeConfig, setRuntimeConfig] = useState(() => {
     const globalObj = typeof window !== 'undefined' ? window : {};
     const env = globalObj.__ASRIVA_ENV__ || (typeof process !== 'undefined' && process.env ? process.env : {});
+    const supabaseUrl = (env.VITE_SUPABASE_URL || '').replace(/\\/$/, '');
+    const edge = (configured, slug) => configured || (supabaseUrl ? `${supabaseUrl}/functions/v1/${slug}` : '');
     return {
-      supabaseUrl: env.VITE_SUPABASE_URL || '',
+      supabaseUrl,
       supabaseAnonKey: env.VITE_SUPABASE_ANON_KEY || '',
       midtransEnvironment: env.VITE_MIDTRANS_ENV || 'SANDBOX',
       midtransClientKey: env.VITE_MIDTRANS_CLIENT_KEY || '',
-      midtransMethod: env.VITE_MIDTRANS_METHOD || 'UNCONFIGURED',
+      midtransMethod: env.VITE_MIDTRANS_METHOD || 'CORE_API',
       endpoints: {
-        'products.list': env.VITE_EDGE_PRODUCTS_LIST || '',
-        'products.detail': env.VITE_EDGE_PRODUCT_DETAIL || '',
-        'availability.validate': env.VITE_EDGE_VALIDATE_AVAILABILITY || '',
-        'bookings.create': env.VITE_EDGE_CREATE_BOOKING || '',
-        'bookings.lookup': env.VITE_EDGE_GET_BOOKING || '',
-        'payments.initiate': env.VITE_EDGE_INITIATE_PAYMENT || '',
-        'payments.verifyStatus': env.VITE_EDGE_VERIFY_PAYMENT || '',
+        'products.list': edge(env.VITE_EDGE_PRODUCTS_LIST, 'asriva-products-list'),
+        'products.detail': edge(env.VITE_EDGE_PRODUCT_DETAIL, 'asriva-product-detail'),
+        'availability.validate': edge(env.VITE_EDGE_VALIDATE_AVAILABILITY, 'asriva-validate-availability'),
+        'bookings.create': edge(env.VITE_EDGE_CREATE_BOOKING, 'asriva-create-booking'),
+        'bookings.lookup': edge(env.VITE_EDGE_GET_BOOKING, 'asriva-get-booking'),
+        'payments.initiate': edge(env.VITE_EDGE_INITIATE_PAYMENT, 'asriva-initiate-payment'),
+        'payments.verifyStatus': edge(env.VITE_EDGE_VERIFY_PAYMENT, 'asriva-verify-payment'),
       },
     };
   });
