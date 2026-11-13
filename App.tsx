@@ -3977,7 +3977,9 @@ export default function App() {
   const [user, setUser] = useState(() =>
     Number(authSession?.expires_at || 0) * 1000 > Date.now() ? authSession?.user ?? null : null
   );
+  const authRestoreSequenceRef = useRef(0);
   const updateAuthSession = useCallback((session) => {
+    authRestoreSequenceRef.current += 1;
     if (authStorageKey && typeof window !== 'undefined') {
       try {
         if (session?.access_token && session?.refresh_token) {
@@ -4002,16 +4004,18 @@ export default function App() {
     if (Number(authSession.expires_at) * 1000 <= Date.now() + 60000) return;
     const refreshIn = Math.max(1000, Number(authSession.expires_at) * 1000 - Date.now() - 60000);
     const timer = window.setTimeout(async () => {
+      const refreshSequence = authRestoreSequenceRef.current;
       try {
         const refreshed = await services.customerService.refreshSession(authSession.refresh_token);
         const verifiedUser = await services.customerService.getUser(refreshed.access_token);
+        if (refreshSequence !== authRestoreSequenceRef.current) return;
         updateAuthSession({
           ...refreshed,
           user: verifiedUser,
           expires_at: refreshed.expires_at || Math.floor(Date.now() / 1000) + Number(refreshed.expires_in || 3600),
         });
       } catch (error) {
-        updateAuthSession(null);
+        if (refreshSequence === authRestoreSequenceRef.current) updateAuthSession(null);
       }
     }, refreshIn);
     return () => window.clearTimeout(timer);
@@ -4020,10 +4024,11 @@ export default function App() {
   useEffect(() => {
     if (!runtimeConfig.supabaseUrl || !runtimeConfig.supabaseAnonKey || !authStorageKey) return;
     let active = true;
+    const restoreSequence = ++authRestoreSequenceRef.current;
     const restoreSession = async () => {
       const stored = readStoredAuthSession(authStorageKey);
       if (!stored?.refresh_token) {
-        if (active) updateAuthSession(null);
+        if (active && restoreSequence === authRestoreSequenceRef.current) updateAuthSession(null);
         return;
       }
       try {
@@ -4038,9 +4043,9 @@ export default function App() {
           user: verifiedUser,
           expires_at: session.expires_at || Math.floor(Date.now() / 1000) + Number(session.expires_in || 3600),
         };
-        if (active) updateAuthSession(normalized);
+        if (active && restoreSequence === authRestoreSequenceRef.current) updateAuthSession(normalized);
       } catch (error) {
-        if (active) updateAuthSession(null);
+        if (active && restoreSequence === authRestoreSequenceRef.current) updateAuthSession(null);
       }
     };
     restoreSession();
