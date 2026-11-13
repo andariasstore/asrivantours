@@ -88,6 +88,8 @@ function bookingView(row: any) {
     bookingReference: row.booking_reference,
     bookingStatus: row.booking_status,
     paymentStatus: row.payment_status,
+    productTitle: row.booking_data?.productTitle ?? row.booking_data?.product?.title ?? "",
+    startDate: row.booking_data?.startDate ?? row.booking_data?.schedule?.startDate ?? "",
     totalAmount: Number(row.total_amount),
     currency: row.currency,
   };
@@ -290,7 +292,8 @@ async function handleContract(contract: string, req: Request) {
       const { data: quote } = await admin.from("asriva_quotes").select("*").eq("token_hash", quoteHash).maybeSingle();
       if (!quote) return fail(409, "QUOTE_INVALID", "Quote tidak valid atau sudah kedaluwarsa.");
       const bookingData = {
-        product: productView(product), productId, schedule: body.schedule, contact,
+        product: productView(product), productId, productTitle: product.title,
+        startDate: body.schedule.startDate, schedule: body.schedule, contact,
         travelers: body.travelers, specialRequests: body.specialRequests ?? "",
         totalAmount: Number(quote.total_amount), currency: "IDR",
         bookingStatus: "pending_payment", paymentStatus: "unpaid",
@@ -308,7 +311,10 @@ async function handleContract(contract: string, req: Request) {
         p_booking_access_expires_at: new Date(Date.now() + Number(env("ASRIVA_BOOKING_ACCESS_TTL_SECONDS", "86400")) * 1000).toISOString(),
       });
       if (error) throw error;
-      return json({ success: true, booking: result.booking, bookingAccessToken: accessToken });
+      return json({
+        success: true, booking: result.booking, bookingAccessToken: accessToken,
+        accessExpiresAt: new Date(Date.now() + Number(env("ASRIVA_BOOKING_ACCESS_TTL_SECONDS", "86400")) * 1000).toISOString(),
+      });
     }
 
     if (contract === "bookings.lookup") {
