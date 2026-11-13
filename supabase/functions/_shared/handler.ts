@@ -318,6 +318,11 @@ async function handleContract(contract: string, req: Request) {
       if (error) throw error;
       if (!row) return fail(404, "BOOKING_NOT_FOUND", "Pesanan tidak ditemukan atau verifikasi tidak sesuai.");
       let verified = Boolean(user && row.user_id === user.id);
+      if (!verified && typeof body.bookingAccessToken === "string" && body.bookingAccessToken.trim()) {
+        const tokenHash = await sha256(body.bookingAccessToken.trim());
+        verified = row.booking_access_expires_at > new Date().toISOString() &&
+          sameBytes(row.booking_access_token_hash, tokenHash);
+      }
       if (!verified && typeof body.contactVerification === "string" && body.contactVerification.trim()) {
         const candidate = body.contactVerification.trim();
         const emailHash = await hashContact(candidate, "email");
