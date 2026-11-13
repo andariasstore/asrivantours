@@ -119,6 +119,37 @@ create table if not exists public.asriva_payment_events (
   received_at timestamptz not null default now()
 );
 
+create table if not exists public.asriva_booking_lookup_rate_limits (
+  id uuid primary key default gen_random_uuid(),
+  ip_hash bytea not null,
+  window_started_at timestamptz not null,
+  attempts integer not null default 1 check (attempts > 0),
+  created_at timestamptz not null default now(),
+  unique (ip_hash, window_started_at)
+);
+
+create or replace function public.asriva_consume_booking_lookup_attempt(
+  p_ip_hash bytea,
+  p_window_started_at timestamptz,
+  p_max_attempts integer default 30
+) returns boolean
+language plpgsql
+security invoker
+set search_path = ''
+as $
+declare
+  v_attempts integer;
+begin
+  insert into public.asriva_booking_lookup_rate_limits (ip_hash, window_started_at, attempts)
+  values (p_ip_hash, p_window_started_at, 1)
+  on conflict (ip_hash, window_started_at)
+  do update set attempts = public.asriva_booking_lookup_rate_limits.attempts + 1
+  returning attempts into v_attempts;
+
+  return v_attempts <= p_max_attempts;
+end;
+$;
+
 create index if not exists asriva_payment_events_order_idx
   on public.asriva_payment_events (order_id, received_at desc);
 
@@ -280,11 +311,13 @@ $$;
 
 revoke all on public.asriva_products, public.asriva_product_reviews,
   public.asriva_inventory_slots, public.asriva_quotes, public.asriva_bookings,
-  public.asriva_payment_invoices, public.asriva_payment_events from anon, authenticated;
+  public.asriva_payment_invoices, public.asriva_payment_events,
+  public.asriva_booking_lookup_rate_limits from anon, authenticated;
 grant select, insert, update, delete on public.asriva_products,
   public.asriva_product_reviews, public.asriva_inventory_slots,
   public.asriva_quotes, public.asriva_bookings,
-  public.asriva_payment_invoices, public.asriva_payment_events to service_role;
+  public.asriva_payment_invoices, public.asriva_payment_events,
+  public.asriva_booking_lookup_rate_limits to service_role;
 
 alter table public.asriva_products enable row level security;
 alter table public.asriva_product_reviews enable row level security;
@@ -293,8 +326,12 @@ alter table public.asriva_quotes enable row level security;
 alter table public.asriva_bookings enable row level security;
 alter table public.asriva_payment_invoices enable row level security;
 alter table public.asriva_payment_events enable row level security;
+alter table public.asriva_booking_lookup_rate_limits enable row level security;
 
 revoke all on function public.asriva_create_booking_atomic(bytea,text,uuid,bytea,jsonb,jsonb,bytea,bytea,bytea,timestamptz) from public, anon, authenticated;
 grant execute on function public.asriva_create_booking_atomic(bytea,text,uuid,bytea,jsonb,jsonb,bytea,bytea,bytea,timestamptz) to service_role;
 revoke all on function public.asriva_claim_payment_invoice(uuid,text,bytea,text,jsonb) from public, anon, authenticated;
 grant execute on function public.asriva_claim_payment_invoice(uuid,text,bytea,text,jsonb) to service_role;
+
+revoke all on function public.asriva_consume_booking_lookup_attempt(bytea,timestamptz,integer) from public, anon, authenticated;
+grant execute on function public.asriva_consume_booking_lookup_attempt(bytea,timestamptz,integer) to service_role;
