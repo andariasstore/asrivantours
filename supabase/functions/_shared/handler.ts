@@ -312,7 +312,7 @@ async function handleContract(contract: string, req: Request) {
       const { data: product, error: productError } = await admin.from("asriva_products").select("*").eq("id", productId).single();
       if (productError) throw productError;
       const quoteHash = await sha256(quoteToken);
-      const { data: quote } = await admin.from("asriva_quotes").select("*").eq("token_hash", quoteHash).maybeSingle();
+      const { data: quote } = await admin.from("asriva_quotes").select("*").eq("token_hash", asBytea(quoteHash)).maybeSingle();
       if (!quote) return fail(409, "QUOTE_INVALID", "Quote tidak valid atau sudah kedaluwarsa.");
       const bookingData = {
         product: productView(product), productId, productTitle: product.title,
