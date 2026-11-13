@@ -195,6 +195,19 @@ async function handleContract(contract: string, req: Request) {
       if (body.destination) query = query.ilike("destination", `%${String(body.destination).slice(0, 80)}%`);
       if (body.minPrice !== undefined && body.minPrice !== "") query = query.gte("base_price", Number(body.minPrice));
       if (body.maxPrice !== undefined && body.maxPrice !== "") query = query.lte("base_price", Number(body.maxPrice));
+      if (body.date) {
+        let inventoryQuery = admin.from("asriva_inventory_slots").select("product_id,capacity_total,reserved_count")
+          .eq("start_date", String(body.date)).eq("is_active", true).limit(1000);
+        if (body.returnDate) inventoryQuery = inventoryQuery.eq("end_date", String(body.returnDate));
+        const { data: slots, error: inventoryError } = await inventoryQuery;
+        if (inventoryError) throw inventoryError;
+        const minTravelers = Math.max(1, Number(body.travelers) || 1);
+        const eligibleIds = [...new Set((slots ?? [])
+          .filter((slot: any) => Number(slot.capacity_total) - Number(slot.reserved_count) >= minTravelers)
+          .map((slot: any) => slot.product_id))];
+        if (!eligibleIds.length) return json({ success: true, items: [], total: 0, page, pageSize: 24 });
+        query = query.in("id", eligibleIds);
+      }
       const sort = String(body.sort ?? "recommended");
       if (sort === "price_asc") query = query.order("base_price", { ascending: true });
       else if (sort === "price_desc") query = query.order("base_price", { ascending: false });
