@@ -332,6 +332,18 @@ async function handleContract(contract: string, req: Request) {
 
     if (contract === "bookings.lookup") {
       const bookingReference = requireText(body.bookingReference, "bookingReference", 80);
+      const forwardedIp = req.headers.get("cf-connecting-ip") ??
+        req.headers.get("x-real-ip") ??
+        req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+        "unknown";
+      const windowStartedAt = new Date(Math.floor(Date.now() / 900000) * 900000).toISOString();
+      const { data: allowed, error: rateError } = await admin.rpc("asriva_consume_booking_lookup_attempt", {
+        p_ip_hash: asBytea(await sha256(forwardedIp)),
+        p_window_started_at: windowStartedAt,
+        p_max_attempts: 30,
+      });
+      if (rateError) throw rateError;
+      if (allowed !== true) return fail(429, "BOOKING_LOOKUP_RATE_LIMITED", "Terlalu banyak percobaan verifikasi. Coba kembali setelah 15 menit.");
       const { data: row, error } = await admin.from("asriva_bookings").select("*")
         .eq("booking_reference", bookingReference).maybeSingle();
       if (error) throw error;
