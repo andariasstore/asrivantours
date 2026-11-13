@@ -153,8 +153,15 @@ async function fetchMidtransStatus(orderId: string) {
 async function persistPaymentStatus(admin: ReturnType<typeof adminClient>, invoice: any, raw: any) {
   const paymentStatus = normalizeMidtransStatus(raw);
   const { data: currentBooking, error: currentBookingError } = await admin.from("asriva_bookings")
-    .select("booking_status").eq("id", invoice.booking_id).single();
+    .select("booking_status,total_amount,currency").eq("id", invoice.booking_id).single();
   if (currentBookingError) throw currentBookingError;
+  if (String(raw?.order_id ?? "") !== String(invoice.order_id) ||
+      Number(raw?.gross_amount) !== Number(currentBooking.total_amount) ||
+      (raw?.currency && raw.currency !== currentBooking.currency)) {
+    throw Object.assign(new Error("Data transaksi Midtrans tidak cocok dengan invoice ASRIVA."), {
+      status: 409, code: "PAYMENT_TRANSACTION_MISMATCH",
+    });
+  }
   const bookingStatus = ["settlement", "capture"].includes(paymentStatus)
     ? (["cancelled", "expired"].includes(currentBooking.booking_status) ? currentBooking.booking_status : "paid")
     : paymentStatus === "expired" ? "expired" : currentBooking.booking_status;
@@ -473,6 +480,12 @@ async function handleContract(contract: string, req: Request) {
           // A timeout can happen after Midtrans accepted the charge. Reconcile by the same order_id before retrying.
           try { gatewayResponse = await fetchMidtransStatus(orderId); }
           catch { throw chargeError; }
+        }
+        if (String(gatewayResponse?.order_id ?? "") !== String(orderId) ||
+            Number(gatewayResponse?.gross_amount) !== Number(booking.total_amount)) {
+          throw Object.assign(new Error("Respons Midtrans tidak cocok dengan jumlah invoice booking."), {
+            status: 409, code: "PAYMENT_CHARGE_RESPONSE_MISMATCH",
+          });
         }
         const { error: saveError } = await admin.from("asriva_payment_invoices").update({
           gateway_response: gatewayResponse,
