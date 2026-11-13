@@ -180,7 +180,12 @@ begin
   end if;
 
   v_travelers := coalesce((p_booking_data->'schedule'->>'travelers')::integer, v_quote.travelers);
-  if v_travelers <> v_quote.travelers or p_booking_data->>'productId' <> v_quote.product_id then
+  if v_travelers <> v_quote.travelers or p_booking_data->>'productId' <> v_quote.product_id
+     or p_booking_data->'schedule'->>'startDate' is distinct from v_quote.schedule->>'startDate'
+     or coalesce(p_booking_data->'schedule'->>'endDate', '') is distinct from coalesce(v_quote.schedule->>'endDate', '')
+     or coalesce(p_booking_data->'schedule'->>'optionId', '') is distinct from coalesce(v_quote.schedule->>'optionId', '')
+     or coalesce(p_booking_data->'schedule'->>'pickupLocation', '') is distinct from coalesce(v_quote.schedule->>'pickupLocation', '')
+     or coalesce(p_booking_data->'schedule'->>'timeSlot', '') is distinct from coalesce(v_quote.schedule->>'timeSlot', '') then
     raise exception 'QUOTE_PAYLOAD_MISMATCH' using errcode = 'P0001';
   end if;
 
