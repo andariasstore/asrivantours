@@ -173,7 +173,7 @@ async function authorizeBooking(req: Request, admin: ReturnType<typeof adminClie
   if (user && booking.user_id === user.id) return true;
   if (!accessToken) return false;
   const tokenHash = await sha256(accessToken);
-  return booking.booking_access_expires_at > new Date().toISOString() &&
+  return new Date(booking.booking_access_expires_at).getTime() > Date.now() &&
     sameBytes(booking.booking_access_token_hash, tokenHash);
 }
 
@@ -339,7 +339,7 @@ async function handleContract(contract: string, req: Request) {
       let verified = Boolean(user && row.user_id === user.id);
       if (!verified && typeof body.bookingAccessToken === "string" && body.bookingAccessToken.trim()) {
         const tokenHash = await sha256(body.bookingAccessToken.trim());
-        verified = row.booking_access_expires_at > new Date().toISOString() &&
+        verified = new Date(row.booking_access_expires_at).getTime() > Date.now() &&
           sameBytes(row.booking_access_token_hash, tokenHash);
       }
       if (!verified && typeof body.contactVerification === "string" && body.contactVerification.trim()) {
