@@ -149,9 +149,12 @@ async function fetchMidtransStatus(orderId: string) {
 }
 async function persistPaymentStatus(admin: ReturnType<typeof adminClient>, invoice: any, raw: any) {
   const paymentStatus = normalizeMidtransStatus(raw);
+  const { data: currentBooking, error: currentBookingError } = await admin.from("asriva_bookings")
+    .select("booking_status").eq("id", invoice.booking_id).single();
+  if (currentBookingError) throw currentBookingError;
   const bookingStatus = ["settlement", "capture"].includes(paymentStatus)
-    ? "paid"
-    : paymentStatus === "expired" ? "expired" : "pending_payment";
+    ? (["cancelled", "expired"].includes(currentBooking.booking_status) ? currentBooking.booking_status : "paid")
+    : paymentStatus === "expired" ? "expired" : currentBooking.booking_status;
   const { error: invoiceError } = await admin.from("asriva_payment_invoices").update({
     gateway_response: raw,
     gateway_transaction_id: raw.transaction_id ?? null,
