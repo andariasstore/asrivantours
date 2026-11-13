@@ -72,7 +72,7 @@ create table if not exists public.asriva_bookings (
   booking_reference text not null unique,
   idempotency_key_hash bytea not null unique,
   user_id uuid references auth.users(id) on delete set null,
-  quote_id uuid not null references public.asriva_quotes(id),
+  quote_id uuid not null unique references public.asriva_quotes(id),
   inventory_slot_id uuid not null references public.asriva_inventory_slots(id),
   contact_data jsonb not null,
   contact_email_hash bytea not null,
@@ -206,8 +206,33 @@ begin
   where token_hash = p_quote_token_hash
   for update;
 
-  if not found or v_quote.expires_at <= now() or v_quote.consumed_at is not null then
+  if not found or v_quote.expires_at <= now() then
     raise exception 'QUOTE_INVALID_OR_EXPIRED' using errcode = 'P0001';
+  end if;
+
+  if v_quote.consumed_at is not null then
+    select * into v_existing
+    from public.asriva_bookings
+    where quote_id = v_quote.id
+    for update;
+    if found then
+      if v_existing.booking_data->>'productId' is distinct from p_booking_data->>'productId'
+         or v_existing.booking_data->'schedule' is distinct from p_booking_data->'schedule'
+         or v_existing.booking_data->'contact' is distinct from p_booking_data->'contact' then
+        raise exception 'QUOTE_ALREADY_USED_WITH_DIFFERENT_PAYLOAD' using errcode = 'P0001';
+      end if;
+      update public.asriva_bookings
+        set booking_access_token_hash = p_booking_access_token_hash,
+            booking_access_expires_at = p_booking_access_expires_at,
+            updated_at = now()
+        where id = v_existing.id
+        returning * into v_existing;
+      return jsonb_build_object('booking', v_existing.booking_data ||
+        jsonb_build_object('bookingReference', v_existing.booking_reference,
+          'bookingStatus', v_existing.booking_status, 'paymentStatus', v_existing.payment_status,
+          'totalAmount', v_existing.total_amount, 'currency', v_existing.currency));
+    end if;
+    raise exception 'QUOTE_ALREADY_CONSUMED' using errcode = 'P0001';
   end if;
 
   v_travelers := coalesce((p_booking_data->'schedule'->>'travelers')::integer, v_quote.travelers);
