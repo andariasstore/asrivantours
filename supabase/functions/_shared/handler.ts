@@ -219,7 +219,24 @@ async function handleContract(contract: string, req: Request) {
       const from = (page - 1) * pageSize;
       const { data, count, error } = await query.range(from, from + pageSize - 1);
       if (error) throw error;
-      const items = (data ?? []).map(productView);
+      const productRows = data ?? [];
+      const productIds = productRows.map((row: any) => row.id);
+      let availabilityByProduct: Record<string, number> = {};
+      if (productIds.length) {
+        const { data: slots, error: slotsError } = await admin.from("asriva_inventory_slots")
+          .select("product_id,capacity_total,reserved_count")
+          .in("product_id", productIds).eq("is_active", true).limit(1000);
+        if (slotsError) throw slotsError;
+        availabilityByProduct = (slots ?? []).reduce((acc: Record<string, number>, slot: any) => {
+          acc[slot.product_id] = (acc[slot.product_id] ?? 0) +
+            Math.max(0, Number(slot.capacity_total) - Number(slot.reserved_count));
+          return acc;
+        }, {});
+      }
+      const items = productRows.map((row: any) => ({
+        ...productView(row),
+        availableQuota: availabilityByProduct[row.id] ?? 0,
+      }));
       return json({ success: true, items, total: count ?? 0, page, pageSize });
     }
 
@@ -229,17 +246,22 @@ async function handleContract(contract: string, req: Request) {
         .eq("id", productId).eq("is_published", true).maybeSingle();
       if (error) throw error;
       if (!row) return fail(404, "PRODUCT_NOT_FOUND", "Produk tidak ditemukan atau tidak dipublikasikan.");
-      const [{ data: reviews, error: reviewError }, { data: related, error: relatedError }] = await Promise.all([
+      const [{ data: reviews, error: reviewError }, { data: related, error: relatedError }, { data: slots, error: slotsError }] = await Promise.all([
         admin.from("asriva_product_reviews").select("*").eq("product_id", productId)
           .eq("is_verified", true).eq("is_published", true).order("created_at", { ascending: false }).limit(20),
         admin.from("asriva_products").select("*").eq("is_published", true)
           .eq("category", row.category).neq("id", productId).limit(6),
+        admin.from("asriva_inventory_slots").select("capacity_total,reserved_count")
+          .eq("product_id", productId).eq("is_active", true).limit(1000),
       ]);
       if (reviewError) throw reviewError;
       if (relatedError) throw relatedError;
+      if (slotsError) throw slotsError;
+      const availableQuota = (slots ?? []).reduce((sum: number, slot: any) =>
+        sum + Math.max(0, Number(slot.capacity_total) - Number(slot.reserved_count)), 0);
       return json({
         success: true,
-        product: productView(row),
+        product: { ...productView(row), availableQuota },
         verifiedReviews: (reviews ?? []).map((r: any) => ({
           id: r.id, reviewerName: r.reviewer_name, rating: Number(r.rating),
           review: r.review_text, createdAt: r.created_at, verified: true,
