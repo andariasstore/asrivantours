@@ -328,15 +328,16 @@ function createAsrivaServices(runtimeConfig, addAuditLog, authSession) {
       : `${normalizedBase}${endpointPath.startsWith('/') ? '' : '/'}${endpointPath}`;
 
     try {
+      const bearerToken = authSession?.access_token &&
+        Number(authSession.expires_at || 0) * 1000 > Date.now() + 30000
+        ? authSession.access_token
+        : (!authSession?.access_token && supabaseAnonKey.startsWith('eyJ') ? supabaseAnonKey : '');
       const response = await fetch(normalizedPath, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           apikey: supabaseAnonKey,
-          ...(authSession?.access_token &&
-            Number(authSession.expires_at || 0) * 1000 > Date.now() + 30000
-            ? { Authorization: `Bearer ${authSession.access_token}` }
-            : {}),
+          ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
         },
         body: JSON.stringify(payload),
       });
