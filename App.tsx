@@ -333,7 +333,8 @@ function createAsrivaServices(runtimeConfig, addAuditLog, authSession) {
         headers: {
           'Content-Type': 'application/json',
           apikey: supabaseAnonKey,
-          ...(authSession?.access_token
+          ...(authSession?.access_token &&
+            Number(authSession.expires_at || 0) * 1000 > Date.now() + 30000
             ? { Authorization: `Bearer ${authSession.access_token}` }
             : {}),
         },
@@ -3972,7 +3973,9 @@ export default function App() {
   );
 
    // Application State
-  const [user, setUser] = useState(() => authSession?.user ?? null);
+  const [user, setUser] = useState(() =>
+    Number(authSession?.expires_at || 0) * 1000 > Date.now() ? authSession?.user ?? null : null
+  );
   const updateAuthSession = useCallback((session) => {
     if (authStorageKey && typeof window !== 'undefined') {
       try {
@@ -3992,6 +3995,25 @@ export default function App() {
     setAuthSession(null);
     setUser(null);
   }, [authStorageKey]);
+
+  useEffect(() => {
+    if (!authSession?.refresh_token || !authSession?.expires_at) return;
+    const refreshIn = Math.max(1000, Number(authSession.expires_at) * 1000 - Date.now() - 60000);
+    const timer = window.setTimeout(async () => {
+      try {
+        const refreshed = await services.customerService.refreshSession(authSession.refresh_token);
+        const verifiedUser = await services.customerService.getUser(refreshed.access_token);
+        updateAuthSession({
+          ...refreshed,
+          user: verifiedUser,
+          expires_at: refreshed.expires_at || Math.floor(Date.now() / 1000) + Number(refreshed.expires_in || 3600),
+        });
+      } catch (error) {
+        updateAuthSession(null);
+      }
+    }, refreshIn);
+    return () => window.clearTimeout(timer);
+  }, [authSession?.refresh_token, authSession?.expires_at, services, updateAuthSession]);
 
   useEffect(() => {
     if (!runtimeConfig.supabaseUrl || !runtimeConfig.supabaseAnonKey || !authStorageKey) return;
