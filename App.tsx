@@ -2681,7 +2681,7 @@ const BookingReviewPage = () => {
 // ============================================================================
 
 const BookingConfirmationPage = ({ bookingRef }) => {
-  const { activeBookings, navigate, services, saveBookingRecord } = useApp();
+  const { activeBookings, navigate, services, saveBookingRecord, user } = useApp();
   // A booking reference is not authorization; recovery requires the opaque verified access token.
   const booking = activeBookings[bookingRef] || null;
   const [restoring, setRestoring] = useState(false);
@@ -2689,17 +2689,17 @@ const BookingConfirmationPage = ({ bookingRef }) => {
   useEffect(() => {
     if (booking) return;
     const bookingAccessToken = readBookingAccessToken(bookingRef);
-    if (!bookingAccessToken) return;
+    if (!bookingAccessToken && !user) return;
     let active = true;
     setRestoring(true);
-    services.bookingService.lookupBooking({ bookingReference: bookingRef, bookingAccessToken })
+    services.bookingService.lookupBooking({ bookingReference: bookingRef, bookingAccessToken: bookingAccessToken || undefined })
       .then((res) => {
         if (active && res?.booking) saveBookingRecord(res.booking, res.bookingAccessToken, res.accessExpiresAt);
       })
       .catch(() => {})
       .finally(() => { if (active) setRestoring(false); });
     return () => { active = false; };
-  }, [booking, bookingRef, services, saveBookingRecord]);
+  }, [booking, bookingRef, services, saveBookingRecord, user]);
 
   if (!booking && restoring) {
     return <div className="max-w-3xl mx-auto px-4 py-12 text-center text-sm text-slate-600">Memulihkan detail booking terverifikasi...</div>;
@@ -2798,7 +2798,7 @@ const BookingConfirmationPage = ({ bookingRef }) => {
 // ============================================================================
 
 const CheckoutPage = ({ bookingRef }) => {
-  const { activeBookings, services, navigate, openIntegrationModal, addToast, saveBookingRecord } = useApp();
+  const { activeBookings, services, navigate, openIntegrationModal, addToast, saveBookingRecord, user } = useApp();
   const booking = activeBookings[bookingRef] || null;
   const [restoringBooking, setRestoringBooking] = useState(false);
   const integrationStatus = services.paymentService.getIntegrationStatus();
@@ -2806,17 +2806,17 @@ const CheckoutPage = ({ bookingRef }) => {
   useEffect(() => {
     if (booking) return;
     const bookingAccessToken = readBookingAccessToken(bookingRef);
-    if (!bookingAccessToken) return;
+    if (!bookingAccessToken && !user) return;
     let active = true;
     setRestoringBooking(true);
-    services.bookingService.lookupBooking({ bookingReference: bookingRef, bookingAccessToken })
+    services.bookingService.lookupBooking({ bookingReference: bookingRef, bookingAccessToken: bookingAccessToken || undefined })
       .then((res) => {
         if (active && res?.booking) saveBookingRecord(res.booking, res.bookingAccessToken, res.accessExpiresAt);
       })
       .catch(() => {})
       .finally(() => { if (active) setRestoringBooking(false); });
     return () => { active = false; };
-  }, [booking, bookingRef, services, saveBookingRecord]);
+  }, [booking, bookingRef, services, saveBookingRecord, user]);
 
   const [initiating, setInitiating] = useState(false);
   const [paymentSession, setPaymentSession] = useState(null);
@@ -3246,24 +3246,24 @@ const MyBookingsPage = () => {
 };
 
 const BookingDetailPage = ({ bookingRef }) => {
-  const { activeBookings, navigate, services, saveBookingRecord } = useApp();
+  const { activeBookings, navigate, services, saveBookingRecord, user } = useApp();
   const booking = activeBookings[bookingRef] || null;
   const [restoring, setRestoring] = useState(false);
 
   useEffect(() => {
     if (booking) return;
     const bookingAccessToken = readBookingAccessToken(bookingRef);
-    if (!bookingAccessToken) return;
+    if (!bookingAccessToken && !user) return;
     let active = true;
     setRestoring(true);
-    services.bookingService.lookupBooking({ bookingReference: bookingRef, bookingAccessToken })
+    services.bookingService.lookupBooking({ bookingReference: bookingRef, bookingAccessToken: bookingAccessToken || undefined })
       .then((res) => {
         if (active && res?.booking) saveBookingRecord(res.booking, res.bookingAccessToken, res.accessExpiresAt);
       })
       .catch(() => {})
       .finally(() => { if (active) setRestoring(false); });
     return () => { active = false; };
-  }, [booking, bookingRef, services, saveBookingRecord]);
+  }, [booking, bookingRef, services, saveBookingRecord, user]);
 
   if (!booking && restoring) {
     return <div className="max-w-3xl mx-auto px-4 py-12 text-center text-sm text-slate-600">Memulihkan detail booking terverifikasi...</div>;
