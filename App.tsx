@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, createContext, useContext } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, createContext, useContext } from 'react';
 import {
   Search, Compass, Calendar, User, MapPin, Users, Plane, Hotel, Car,
   Sparkles, ShieldCheck, CreditCard, Clock, CheckCircle2, AlertCircle,
@@ -1066,22 +1066,28 @@ const HomePage = () => {
   const [featuredProducts, setFeaturedProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const requestIdRef = useRef(0);
 
   const loadFeatured = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const res = await services.productService.listProducts({ sort: 'recommended', page: 1 });
+      if (requestId !== requestIdRef.current) return;
       setFeaturedProducts(Array.isArray(res?.items) ? res.items : []);
     } catch (err) {
-      setError(err);
+      if (requestId === requestIdRef.current) setError(err);
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   }, [services]);
 
   useEffect(() => {
     loadFeatured();
+    return () => {
+      requestIdRef.current += 1;
+    };
   }, [loadFeatured]);
 
   const handleHeroSearch = (params) => {
@@ -1275,6 +1281,7 @@ const ProductListingPage = ({ fixedCategory = null, pageTitle, pageSubtitle }) =
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showMobileFilter, setShowMobileFilter] = useState(false);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     setFilters((prev) => ({
@@ -1288,6 +1295,7 @@ const ProductListingPage = ({ fixedCategory = null, pageTitle, pageSubtitle }) =
   }, [fixedCategory, params]);
 
   const fetchProducts = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -1302,17 +1310,21 @@ const ProductListingPage = ({ fixedCategory = null, pageTitle, pageSubtitle }) =
         sort: filters.sort,
         page: filters.page,
       });
+      if (requestId !== requestIdRef.current) return;
       setProducts(Array.isArray(res?.items) ? res.items : []);
       setTotal(typeof res?.total === 'number' ? res.total : 0);
     } catch (err) {
-      setError(err);
+      if (requestId === requestIdRef.current) setError(err);
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   }, [services, filters, fixedCategory]);
 
   useEffect(() => {
     fetchProducts();
+    return () => {
+      requestIdRef.current += 1;
+    };
   }, [fetchProducts]);
 
   return (
@@ -1576,12 +1588,15 @@ const ProductDetailPage = ({ productId }) => {
   const [validating, setValidating] = useState(false);
   const [quote, setQuote] = useState(null);
   const [validationError, setValidationError] = useState('');
+  const requestIdRef = useRef(0);
 
   const loadDetail = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const res = await services.productService.getProductDetail(productId);
+      if (requestId !== requestIdRef.current) return;
       if (!res?.product) {
         throw new ApiIntegrationError('BACKEND_ERROR', 'Produk perjalanan tidak ditemukan di database ASRIVA.', 'products.detail');
       }
@@ -1592,14 +1607,17 @@ const ProductDetailPage = ({ productId }) => {
         setSelectedOptionId(res.product.options[0].id);
       }
     } catch (err) {
-      setError(err);
+      if (requestId === requestIdRef.current) setError(err);
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   }, [services, productId]);
 
   useEffect(() => {
     loadDetail();
+    return () => {
+      requestIdRef.current += 1;
+    };
   }, [loadDetail]);
 
   const handleValidateAvailability = async () => {
