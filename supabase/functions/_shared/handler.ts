@@ -339,7 +339,7 @@ async function handleContract(contract: string, req: Request) {
       const email = requireText(contact.email, "contact.email", 254);
       const phone = requireText(contact.phone, "contact.phone", 40);
       const accessToken = randomToken();
-      const ref = `ASR-${new Date().toISOString().slice(0,10).replaceAll("-","")}-${crypto.randomUUID().slice(0,8).toUpperCase()}`;
+      const ref = `ASR-${new Date().toISOString().slice(0,10).replaceAll("-","")}-${crypto.randomUUID().replaceAll("-", "").slice(0,16).toUpperCase()}`;
       const { data: product, error: productError } = await admin.from("asriva_products").select("*").eq("id", productId).single();
       if (productError) throw productError;
       const quoteHash = await sha256(quoteToken);
