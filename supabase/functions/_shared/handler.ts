@@ -109,12 +109,15 @@ function requireNumber(value: unknown, name: string, min = 1, max = 50) {
 }
 function normalizeMidtransStatus(raw: any) {
   const status = String(raw?.transaction_status ?? "").toLowerCase();
-  if (status === "settlement") return "settlement";
-  if (status === "capture" && String(raw?.fraud_status ?? "accept").toLowerCase() === "accept") return "capture";
+  const statusCode = String(raw?.status_code ?? "");
+  const fraudStatus = String(raw?.fraud_status ?? "").toLowerCase();
+  const fraudAccepted = !fraudStatus || fraudStatus === "accept";
+  if (status === "settlement" && statusCode === "200" && fraudAccepted) return "settlement";
+  if (status === "capture" && statusCode === "200" && fraudAccepted) return "capture";
   if (status === "expire") return "expired";
   if (["deny", "cancel", "failure"].includes(status)) return "failed";
   if (status === "refund" || status === "partial_refund") return "refunded";
-  if (status === "pending" || status === "authorize" || status === "capture") return "pending";
+  if (status === "pending" || status === "authorize" || status === "capture" || status === "settlement") return "pending";
   return "pending";
 }
 async function midtransRequest(path: string, init: RequestInit = {}) {
