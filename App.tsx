@@ -92,6 +92,43 @@ const formatDateID = (isoString, includeTime = false) => {
   }
 };
 
+const getSupabaseAuthStorageKey = (supabaseUrl) => {
+  try {
+    const projectRef = new URL(supabaseUrl).hostname.split('.')[0];
+    return projectRef ? `sb-${projectRef}-auth-token` : '';
+  } catch {
+    return '';
+  }
+};
+
+const readStoredAuthSession = (storageKey) => {
+  if (!storageKey || typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const bookingAccessStorageKey = (bookingReference) =>
+  `asriva:booking-access:${bookingReference}`;
+
+const readBookingAccessToken = (bookingReference) => {
+  if (!bookingReference || typeof window === 'undefined') return '';
+  try {
+    const key = bookingAccessStorageKey(bookingReference);
+    const stored = JSON.parse(window.sessionStorage.getItem(key) || 'null');
+    if (!stored?.token || !stored?.expiresAt || stored.expiresAt <= Date.now()) {
+      window.sessionStorage.removeItem(key);
+      return '';
+    }
+    return stored.token;
+  } catch {
+    return '';
+  }
+};
+
 // ============================================================================
 // 3. API CONTRACTS & RUNTIME CONFIGURATION STORE
 // ============================================================================
@@ -248,7 +285,7 @@ const assertContractResponse = (contractId, data) => {
  * Connects strictly to user-supplied Supabase URL, Anon Key, and Edge Function paths.
  * Never fabricates response payloads.
  */
-function createAsrivaServices(runtimeConfig, addAuditLog) {
+function createAsrivaServices(runtimeConfig, addAuditLog, authSession) {
   const {
     supabaseUrl,
     supabaseAnonKey,
@@ -293,7 +330,7 @@ function createAsrivaServices(runtimeConfig, addAuditLog) {
         headers: {
           'Content-Type': 'application/json',
           apikey: supabaseAnonKey,
-          Authorization: `Bearer ${supabaseAnonKey}`,
+          Authorization: `Bearer ${authSession?.access_token || supabaseAnonKey}`,
         },
         body: JSON.stringify(payload),
       });
@@ -433,6 +470,40 @@ function createAsrivaServices(runtimeConfig, addAuditLog) {
           );
         }
         return data;
+      },
+      refreshSession: async (refreshToken) => {
+        const res = await fetch(`${supabaseUrl.replace(/\/$/, '')}/auth/v1/token?grant_type=refresh_token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: supabaseAnonKey },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new ApiIntegrationError('BACKEND_ERROR', data?.error_description || data?.msg || 'Sesi akun kedaluwarsa. Silakan masuk kembali.', 'auth.refresh');
+        }
+        return data;
+      },
+      getUser: async (accessToken) => {
+        const res = await fetch(`${supabaseUrl.replace(/\/$/, '')}/auth/v1/user`, {
+          method: 'GET',
+          headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${accessToken}` },
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new ApiIntegrationError('BACKEND_ERROR', data?.message || 'Sesi akun tidak lagi valid.', 'auth.getUser');
+        }
+        return data;
+      },
+      signOut: async (accessToken) => {
+        if (!accessToken) return;
+        const res = await fetch(`${supabaseUrl.replace(/\/$/, '')}/auth/v1/logout`, {
+          method: 'POST',
+          headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${accessToken}` },
+        });
+        if (!res.ok && res.status !== 401) {
+          const data = await res.json().catch(() => ({}));
+          throw new ApiIntegrationError('BACKEND_ERROR', data?.message || 'Gagal mengakhiri sesi Supabase Auth.', 'auth.signOut');
+        }
       },
     },
   };
@@ -2502,7 +2573,7 @@ const BookingReviewPage = () => {
         );
       }
 
-      saveBookingRecord(createdRes.booking);
+      saveBookingRecord(createdRes.booking, createdRes.bookingAccessToken, createdRes.accessExpiresAt);
       addToast({
         type: 'success',
         title: 'Pemesanan Terkonfirmasi',
@@ -2744,6 +2815,7 @@ const CheckoutPage = ({ bookingRef }) => {
       const res = await services.paymentService.initiatePayment({
         bookingReference: bookingRef,
         idempotencyKey,
+        bookingAccessToken: booking.bookingAccessToken || readBookingAccessToken(bookingRef),
       });
       if (res?.mode !== 'CORE_API' || !res?.orderId) {
         throw new ApiIntegrationError(
@@ -2921,6 +2993,7 @@ const PaymentResultPage = ({ routeSegment }) => {
       const res = await services.paymentService.verifyPaymentStatus({
         bookingReference: bookingRef,
         orderId: orderId || undefined,
+        bookingAccessToken: readBookingAccessToken(bookingRef),
       });
       setVerifiedData(res);
       if (res?.booking) {
@@ -3046,7 +3119,7 @@ const MyBookingsPage = () => {
           'bookings.lookup'
         );
       }
-      saveBookingRecord(res.booking);
+      saveBookingRecord(res.booking, res.bookingAccessToken, res.accessExpiresAt);
       navigate(`/my-bookings/${encodeURIComponent(res.booking.bookingReference)}`);
     } catch (err) {
       setError(err);
@@ -3214,7 +3287,7 @@ const BookingDetailPage = ({ bookingRef }) => {
 // ============================================================================
 
 const AccountPage = () => {
-  const { user, setUser, services, addToast, navigate } = useApp();
+  const { user, authSession, updateAuthSession, services, addToast, navigate } = useApp();
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -3230,11 +3303,14 @@ const AccountPage = () => {
     try {
       if (mode === 'login') {
         const res = await services.customerService.signInWithSupabase(email, password);
-        setUser(res.user || { email });
+        if (!res.access_token || !res.refresh_token || !res.user) {
+          throw new ApiIntegrationError('AUTH_SESSION_MISSING', 'Supabase tidak mengembalikan sesi autentikasi yang lengkap.', 'auth.signIn');
+        }
+        updateAuthSession(res);
         addToast({ type: 'success', title: 'Berhasil Masuk', message: `Selamat datang kembali, ${email}` });
       } else {
         const res = await services.customerService.signUpWithSupabase(email, password, fullName, phone);
-        if (res.user) setUser(res.user);
+        if (res.access_token && res.refresh_token && res.user) updateAuthSession(res);
         addToast({
           type: 'success',
           title: 'Pendaftaran Berhasil',
@@ -3261,9 +3337,14 @@ const AccountPage = () => {
           </div>
           <button
             type="button"
-            onClick={() => {
-              setUser(null);
-              addToast({ type: 'info', title: 'Keluar Akun', message: 'Sesi akun Anda telah diakhiri.' });
+            onClick={async () => {
+              try {
+                await services.customerService.signOut(authSession?.access_token);
+                updateAuthSession(null);
+                addToast({ type: 'info', title: 'Keluar Akun', message: 'Sesi Supabase Auth telah diakhiri.' });
+              } catch (err) {
+                addToast({ type: 'error', title: 'Gagal Keluar', message: err.message || 'Sesi belum dapat diakhiri.' });
+              }
             }}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 text-sm font-semibold"
           >
@@ -3812,18 +3893,70 @@ export default function App() {
     };
   });
 
+  const authStorageKey = getSupabaseAuthStorageKey(runtimeConfig.supabaseUrl);
+  const [authSession, setAuthSession] = useState(() => readStoredAuthSession(authStorageKey));
   const [auditLogs, setAuditLogs] = useState([]);
   const addAuditLog = useCallback((entry) => {
     setAuditLogs((prev) => [entry, ...prev].slice(0, 50));
   }, []);
 
   const services = useMemo(
-    () => createAsrivaServices(runtimeConfig, addAuditLog),
-    [runtimeConfig, addAuditLog]
+    () => createAsrivaServices(runtimeConfig, addAuditLog, authSession),
+    [runtimeConfig, addAuditLog, authSession]
   );
 
    // Application State
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => authSession?.user ?? null);
+  const updateAuthSession = useCallback((session) => {
+    if (authStorageKey && typeof window !== 'undefined') {
+      try {
+        if (session?.access_token && session?.refresh_token) {
+          const expiresAt = session.expires_at || Math.floor(Date.now() / 1000) + Number(session.expires_in || 3600);
+          const normalized = { ...session, expires_at: expiresAt };
+          window.localStorage.setItem(authStorageKey, JSON.stringify(normalized));
+          setAuthSession(normalized);
+          setUser(normalized.user ?? null);
+          return;
+        }
+        window.localStorage.removeItem(authStorageKey);
+      } catch (error) {
+        console.warn('[ASRIVA_AUTH_STORAGE]', error);
+      }
+    }
+    setAuthSession(null);
+    setUser(null);
+  }, [authStorageKey]);
+
+  useEffect(() => {
+    if (!runtimeConfig.supabaseUrl || !runtimeConfig.supabaseAnonKey || !authStorageKey) return;
+    let active = true;
+    const restoreSession = async () => {
+      const stored = readStoredAuthSession(authStorageKey);
+      if (!stored?.refresh_token) {
+        if (active) updateAuthSession(null);
+        return;
+      }
+      try {
+        let session = stored;
+        const expiresAt = Number(session.expires_at || 0);
+        if (!session.access_token || expiresAt * 1000 <= Date.now() + 60000) {
+          session = await services.customerService.refreshSession(session.refresh_token);
+        }
+        const verifiedUser = await services.customerService.getUser(session.access_token);
+        const normalized = {
+          ...session,
+          user: verifiedUser,
+          expires_at: session.expires_at || Math.floor(Date.now() / 1000) + Number(session.expires_in || 3600),
+        };
+        if (active) updateAuthSession(normalized);
+      } catch (error) {
+        if (active) updateAuthSession(null);
+      }
+    };
+    restoreSession();
+    return () => { active = false; };
+  }, [runtimeConfig.supabaseUrl, runtimeConfig.supabaseAnonKey]);
+
   const [bookingDraft, setBookingDraft] = useState(null);
   const [activeBookings, setActiveBookings] = useState({});
   const [integrationModalOpen, setIntegrationModalOpen] = useState(false);
@@ -3841,11 +3974,24 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const saveBookingRecord = useCallback((booking) => {
+  const saveBookingRecord = useCallback((booking, accessToken = null, accessExpiresAt = null) => {
     if (!booking?.bookingReference) return;
+    const token = accessToken || booking.bookingAccessToken || readBookingAccessToken(booking.bookingReference);
+    if (token && typeof window !== 'undefined') {
+      try {
+        const expiry = accessExpiresAt ? new Date(accessExpiresAt).getTime() : Date.now() + 86400000;
+        window.sessionStorage.setItem(bookingAccessStorageKey(booking.bookingReference), JSON.stringify({
+          token,
+          expiresAt: expiry,
+        }));
+      } catch (error) {
+        console.warn('[ASRIVA_BOOKING_ACCESS_STORAGE]', error);
+      }
+    }
+    const bookingWithAccess = token ? { ...booking, bookingAccessToken: token } : booking;
     setActiveBookings((prev) => ({
       ...prev,
-      [booking.bookingReference]: booking,
+      [booking.bookingReference]: bookingWithAccess,
     }));
   }, []);
 
@@ -3973,6 +4119,8 @@ export default function App() {
     auditLogs,
     user,
     setUser,
+    authSession,
+    updateAuthSession,
     bookingDraft,
     setBookingDraft,
     activeBookings,
