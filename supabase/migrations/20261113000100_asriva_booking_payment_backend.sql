@@ -256,6 +256,10 @@ begin
   where booking_id = p_booking_id
   for update;
 
+  if v_invoice.idempotency_key_hash <> p_idempotency_key_hash then
+    raise exception 'PAYMENT_IDEMPOTENCY_KEY_MISMATCH' using errcode = 'P0001';
+  end if;
+
   if v_invoice.gateway_response is null and
      (v_invoice.lease_until is null or v_invoice.lease_until <= now()) then
     update public.asriva_payment_invoices
