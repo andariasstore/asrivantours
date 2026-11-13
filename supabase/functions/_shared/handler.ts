@@ -152,9 +152,9 @@ async function fetchMidtransStatus(orderId: string) {
   return await midtransRequest(`/v2/${encodeURIComponent(orderId)}/status`, { method: "GET" });
 }
 async function persistPaymentStatus(admin: ReturnType<typeof adminClient>, invoice: any, raw: any) {
-  const paymentStatus = normalizeMidtransStatus(raw);
+  let paymentStatus = normalizeMidtransStatus(raw);
   const { data: currentBooking, error: currentBookingError } = await admin.from("asriva_bookings")
-    .select("booking_status,total_amount,currency").eq("id", invoice.booking_id).single();
+    .select("booking_status,payment_status,total_amount,currency").eq("id", invoice.booking_id).single();
   if (currentBookingError) throw currentBookingError;
   if (String(raw?.order_id ?? "") !== String(invoice.order_id) ||
       Number(raw?.gross_amount) !== Number(currentBooking.total_amount) ||
@@ -162,6 +162,11 @@ async function persistPaymentStatus(admin: ReturnType<typeof adminClient>, invoi
     throw Object.assign(new Error("Data transaksi Midtrans tidak cocok dengan invoice ASRIVA."), {
       status: 409, code: "PAYMENT_TRANSACTION_MISMATCH",
     });
+  }
+  if (currentBooking.payment_status === "refunded") paymentStatus = "refunded";
+  else if (["settlement", "capture"].includes(currentBooking.payment_status) &&
+      ["pending", "failed", "expired", "unpaid"].includes(paymentStatus)) {
+    paymentStatus = currentBooking.payment_status;
   }
   const bookingStatus = ["settlement", "capture"].includes(paymentStatus)
     ? (["cancelled", "expired"].includes(currentBooking.booking_status) ? currentBooking.booking_status : "paid")
