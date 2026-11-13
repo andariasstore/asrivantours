@@ -439,7 +439,7 @@ async function handleContract(contract: string, req: Request) {
             channelLocked: true,
           });
         }
-        const requestedChannel = existingInvoice?.payment_channel ?? String(body.preferredChannel ?? env("MIDTRANS_DEFAULT_PAYMENT_TYPE")).trim();
+        const requestedChannel = existingInvoice?.payment_channel ?? String(body.preferredChannel ?? env("MIDTRANS_DEFAULT_PAYMENT_TYPE")).trim().toLowerCase();
         if (!requestedChannel) return fail(503, "PAYMENT_CHANNEL_NOT_CONFIGURED", "Pilih dan konfigurasi payment channel Midtrans yang aktif pada merchant.");
         const channelConfig = parseJson(env("MIDTRANS_CHANNEL_CONFIG_JSON", "{}"), {}) as Record<string, unknown>;
         const orderId = existingInvoice?.order_id ?? booking.booking_reference;
