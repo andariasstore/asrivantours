@@ -47,6 +47,7 @@ async function currentUser(req: Request, admin: ReturnType<typeof adminClient>) 
 }
 
 const bytesToHex = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+const asBytea = (bytes: Uint8Array) => `\\\\x${bytesToHex(bytes)}`;
 async function sha256(value: string) {
   return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
 }
@@ -60,7 +61,11 @@ function randomToken() {
 }
 function sameBytes(a: Uint8Array | string | null, b: Uint8Array) {
   if (!a) return false;
-  const left = typeof a === "string" ? new TextEncoder().encode(a) : a;
+  const left = typeof a === "string"
+    ? (a.startsWith("\\\\x")
+      ? new Uint8Array((a.slice(2).match(/.{1,2}/g) ?? []).map((part) => parseInt(part, 16)))
+      : new TextEncoder().encode(a))
+    : a;
   if (left.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < left.length; i++) diff |= left[i] ^ b[i];
@@ -258,7 +263,7 @@ async function handleContract(contract: string, req: Request) {
       const token = randomToken();
       const expiresAt = new Date(Date.now() + Number(env("ASRIVA_QUOTE_TTL_SECONDS", "600")) * 1000).toISOString();
       const { error: quoteError } = await admin.from("asriva_quotes").insert({
-        token_hash: await sha256(token), inventory_slot_id: slot.id, product_id: productId,
+        token_hash: asBytea(await sha256(token)), inventory_slot_id: slot.id, product_id: productId,
         schedule: { startDate, endDate, travelers, optionId, pickupLocation, timeSlot },
         travelers, unit_price: unitPrice, subtotal, taxes_and_fees: taxesAndFees,
         total_amount: totalAmount, expires_at: expiresAt,
@@ -291,15 +296,15 @@ async function handleContract(contract: string, req: Request) {
         bookingStatus: "pending_payment", paymentStatus: "unpaid",
       };
       const { data: result, error } = await admin.rpc("asriva_create_booking_atomic", {
-        p_idempotency_key_hash: await sha256(idempotencyKey),
+        p_idempotency_key_hash: asBytea(await sha256(idempotencyKey)),
         p_booking_reference: ref,
         p_user_id: user?.id ?? null,
-        p_quote_token_hash: quoteHash,
+        p_quote_token_hash: asBytea(quoteHash),
         p_booking_data: bookingData,
         p_contact_data: contact,
-        p_contact_email_hash: await hashContact(email, "email"),
-        p_contact_phone_hash: await hashContact(phone, "phone"),
-        p_booking_access_token_hash: await sha256(accessToken),
+        p_contact_email_hash: asBytea(await hashContact(email, "email")),
+        p_contact_phone_hash: asBytea(await hashContact(phone, "phone")),
+        p_booking_access_token_hash: asBytea(await sha256(accessToken)),
         p_booking_access_expires_at: new Date(Date.now() + Number(env("ASRIVA_BOOKING_ACCESS_TTL_SECONDS", "86400")) * 1000).toISOString(),
       });
       if (error) throw error;
@@ -323,7 +328,7 @@ async function handleContract(contract: string, req: Request) {
       const accessToken = randomToken();
       const expiresAt = new Date(Date.now() + Number(env("ASRIVA_BOOKING_ACCESS_TTL_SECONDS", "86400")) * 1000).toISOString();
       const { error: updateError } = await admin.from("asriva_bookings").update({
-        booking_access_token_hash: await sha256(accessToken),
+        booking_access_token_hash: asBytea(await sha256(accessToken)),
         booking_access_expires_at: expiresAt,
       }).eq("id", row.id);
       if (updateError) throw updateError;
@@ -373,7 +378,7 @@ async function handleContract(contract: string, req: Request) {
         const claim = await admin.rpc("asriva_claim_payment_invoice", {
           p_booking_id: booking.id,
           p_order_id: orderId,
-          p_idempotency_key_hash: await sha256(requireText(body.idempotencyKey, "idempotencyKey", 128)),
+          p_idempotency_key_hash: asBytea(await sha256(requireText(body.idempotencyKey, "idempotencyKey", 128))),
           p_payment_channel: requestedChannel,
           p_gateway_request: chargeRequest,
         });
