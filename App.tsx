@@ -3998,6 +3998,7 @@ export default function App() {
 
   useEffect(() => {
     if (!authSession?.refresh_token || !authSession?.expires_at) return;
+    if (Number(authSession.expires_at) * 1000 <= Date.now() + 60000) return;
     const refreshIn = Math.max(1000, Number(authSession.expires_at) * 1000 - Date.now() - 60000);
     const timer = window.setTimeout(async () => {
       try {
