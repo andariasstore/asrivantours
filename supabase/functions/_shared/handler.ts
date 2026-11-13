@@ -297,6 +297,13 @@ async function handleContract(contract: string, req: Request) {
       if (!body.schedule || !body.contact || !Array.isArray(body.travelers) || body.travelers.length < 1) {
         return fail(400, "INVALID_BOOKING", "schedule, contact, dan travelers wajib diisi.");
       }
+      const scheduleTravelerCount = requireNumber(body.schedule.travelers, "schedule.travelers", 1, 50);
+      if (body.travelers.length !== scheduleTravelerCount) {
+        return fail(400, "TRAVELER_COUNT_MISMATCH", "Jumlah data peserta harus sama dengan jumlah traveler pada jadwal yang dikutip.");
+      }
+      if (body.specialRequests !== undefined && (typeof body.specialRequests !== "string" || body.specialRequests.length > 2000)) {
+        return fail(400, "INVALID_SPECIAL_REQUESTS", "Permintaan khusus maksimal 2.000 karakter.");
+      }
       const contact = body.contact;
       const email = requireText(contact.email, "contact.email", 254);
       const phone = requireText(contact.phone, "contact.phone", 40);
