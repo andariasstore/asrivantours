@@ -349,10 +349,12 @@ async function handleContract(contract: string, req: Request) {
       if (error) throw error;
       if (!row) return fail(404, "BOOKING_NOT_FOUND", "Pesanan tidak ditemukan atau verifikasi tidak sesuai.");
       let verified = Boolean(user && row.user_id === user.id);
+      let verifiedByAccessToken = false;
       if (!verified && typeof body.bookingAccessToken === "string" && body.bookingAccessToken.trim()) {
         const tokenHash = await sha256(body.bookingAccessToken.trim());
-        verified = new Date(row.booking_access_expires_at).getTime() > Date.now() &&
+        verifiedByAccessToken = new Date(row.booking_access_expires_at).getTime() > Date.now() &&
           sameBytes(row.booking_access_token_hash, tokenHash);
+        verified = verifiedByAccessToken;
       }
       if (!verified && typeof body.contactVerification === "string" && body.contactVerification.trim()) {
         const candidate = body.contactVerification.trim();
@@ -361,7 +363,7 @@ async function handleContract(contract: string, req: Request) {
         verified = sameBytes(row.contact_email_hash, emailHash) || sameBytes(row.contact_phone_hash, phoneHash);
       }
       if (!verified) return fail(403, "BOOKING_VERIFICATION_FAILED", "Nomor booking atau kontak verifikasi tidak sesuai.");
-      const accessToken = randomToken();
+      const accessToken = verifiedByAccessToken ? body.bookingAccessToken.trim() : randomToken();
       const expiresAt = new Date(Date.now() + Number(env("ASRIVA_BOOKING_ACCESS_TTL_SECONDS", "86400")) * 1000).toISOString();
       const { error: updateError } = await admin.from("asriva_bookings").update({
         booking_access_token_hash: asBytea(await sha256(accessToken)),
