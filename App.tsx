@@ -2021,7 +2021,7 @@ const ProductDetailPage = ({ productId }) => {
 // ============================================================================
 
 const BookingInformationPage = () => {
-  const { bookingDraft, setBookingDraft, navigate, user } = useApp();
+  const { bookingDraft, navigate } = useApp();
 
   if (!bookingDraft?.product || !bookingDraft?.quote) {
     return (
@@ -2037,6 +2037,11 @@ const BookingInformationPage = () => {
     );
   }
 
+  return <BookingInformationForm />;
+};
+
+const BookingInformationForm = () => {
+  const { bookingDraft, setBookingDraft, navigate, user } = useApp();
   const { product, schedule, quote } = bookingDraft;
   const requiresIdentification =
     product.category === 'flights' || product.requiresIdNumber === true;
