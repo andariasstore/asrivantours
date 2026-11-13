@@ -42,9 +42,14 @@ create table if not exists public.asriva_inventory_slots (
   unit_price bigint check (unit_price is null or unit_price >= 0),
   taxes_and_fees bigint check (taxes_and_fees is null or taxes_and_fees >= 0),
   is_active boolean not null default true,
-  created_at timestamptz not null default now(),
-  unique (product_id, start_date, option_id, pickup_location, time_slot)
+  created_at timestamptz not null default now()
 );
+
+create unique index if not exists asriva_inventory_slots_unique_idx
+  on public.asriva_inventory_slots (
+    product_id, start_date, coalesce(end_date, date '0001-01-01'),
+    coalesce(option_id, ''), coalesce(pickup_location, ''), coalesce(time_slot, '')
+  );
 
 create table if not exists public.asriva_quotes (
   id uuid primary key default gen_random_uuid(),
@@ -230,7 +235,11 @@ begin
     booking_id, order_id, idempotency_key_hash, payment_channel, gateway_request, lease_until
   ) values (
     p_booking_id, p_order_id, p_idempotency_key_hash, p_payment_channel, p_gateway_request, now() + interval '60 seconds'
-  ) on conflict (booking_id) do nothing;
+  ) on conflict (booking_id) do nothing returning * into v_invoice;
+
+  if found then
+    return jsonb_build_object('invoice', to_jsonb(v_invoice), 'claimed', true, 'channelLocked', true);
+  end if;
 
   select * into v_invoice
   from public.asriva_payment_invoices
