@@ -1,0 +1,31 @@
+project_id = "asrivantours"
+
+[api]
+enabled = true
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[functions.asriva-products-list]
+verify_jwt = true
+
+[functions.asriva-product-detail]
+verify_jwt = true
+
+[functions.asriva-validate-availability]
+verify_jwt = true
+
+[functions.asriva-create-booking]
+verify_jwt = true
+
+[functions.asriva-get-booking]
+verify_jwt = true
+
+[functions.asriva-initiate-payment]
+verify_jwt = true
+
+[functions.asriva-verify-payment]
+verify_jwt = true
+
+[functions.asriva-midtrans-notification]
+verify_jwt = false
