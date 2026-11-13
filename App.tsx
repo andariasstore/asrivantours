@@ -2523,55 +2523,19 @@ const BookingReviewPage = () => {
 // ============================================================================
 
 const BookingConfirmationPage = ({ bookingRef }) => {
-  const { activeBookings, services, navigate, saveBookingRecord } = useApp();
-  const [booking, setBooking] = useState(() => activeBookings[bookingRef] || null);
-  const [loading, setLoading] = useState(!activeBookings[bookingRef]);
-  const [error, setError] = useState(null);
-
-  const fetchBooking = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await services.bookingService.lookupBooking({ bookingReference: bookingRef });
-      if (res?.booking) {
-        setBooking(res.booking);
-        saveBookingRecord(res.booking);
-      }
-    } catch (err) {
-      setError(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [services, bookingRef, saveBookingRecord]);
-
-  useEffect(() => {
-    if (!booking) fetchBooking();
-  }, [booking, fetchBooking]);
-
-  if (loading) {
-    return (
-      <div className="max-w-3xl mx-auto px-4 py-10">
-        <LoadingSkeleton count={1} />
-      </div>
-    );
-  }
-
-  if (error && !booking) {
-    return (
-      <div className="max-w-3xl mx-auto px-4 py-10">
-        <ErrorState error={error} onRetry={fetchBooking} />
-      </div>
-    );
-  }
+  const { activeBookings, navigate } = useApp();
+  // A booking reference is an identifier, not an authorization credential.
+  // Only show data returned by booking creation or by the verified lookup flow.
+  const booking = activeBookings[bookingRef] || null;
 
   if (!booking) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-10">
         <EmptyState
           icon={Receipt}
-          title="Referensi Pemesanan Tidak Ditemukan"
-          description={`Nomor pemesanan ${bookingRef} tidak ditemukan dalam sistem.`}
-          actionLabel="Cari Pesanan Saya"
+          title="Verifikasi Pesanan Diperlukan"
+          description="Untuk melindungi data pemesan, detail pesanan tidak dapat dimuat hanya dengan nomor referensi. Verifikasi nomor booking dan kontak pemesan melalui halaman Pesanan Saya."
+          actionLabel="Verifikasi Pesanan Saya"
           onAction={() => navigate('/my-bookings')}
         />
       </div>
@@ -2679,6 +2643,14 @@ const CheckoutPage = ({ bookingRef }) => {
   });
 
   const handleInitiateMidtrans = async () => {
+    if (!booking?.bookingReference || booking.bookingReference !== bookingRef) {
+      setError(new ApiIntegrationError(
+        'AUTHORIZATION_REQUIRED',
+        'Verifikasi nomor booking dan kontak pemesan melalui halaman Pesanan Saya sebelum melanjutkan pembayaran.',
+        'bookings.lookup'
+      ));
+      return;
+    }
     setInitiating(true);
     setError(null);
     try {
@@ -2712,6 +2684,20 @@ const CheckoutPage = ({ bookingRef }) => {
       setInitiating(false);
     }
   };
+
+  if (!booking || booking.bookingReference !== bookingRef) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-10">
+        <EmptyState
+          icon={ShieldCheck}
+          title="Verifikasi Pesanan Diperlukan"
+          description="Checkout tidak dapat dibuka hanya dengan nomor referensi. Verifikasi nomor booking dan kontak pemesan melalui halaman Pesanan Saya terlebih dahulu."
+          actionLabel="Verifikasi Pesanan Saya"
+          onAction={() => navigate('/my-bookings')}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
