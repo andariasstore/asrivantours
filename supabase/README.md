@@ -63,7 +63,7 @@ An inventory slot must match the requested product, start/end date, option, pick
 
 ## Midtrans CORE_API
 
-The implementation uses the Legacy Core API endpoints:
+The implementation uses Midtrans Legacy Core API (not BI-SNAP and not Snap) endpoints:
 - Charge: `POST https://api.sandbox.midtrans.com/v2/charge` or production host.
 - Status: `GET /v2/{order_id}/status`.
 - Notification signature: `SHA512(order_id + status_code + gross_amount + ServerKey)`.
@@ -86,13 +86,15 @@ https://<PROJECT_REF>.supabase.co/functions/v1/asriva-midtrans-notification
 
 The browser never receives `MIDTRANS_SERVER_KEY`.
 
+Official references: [Charge Transactions](https://docs.midtrans.com/reference/charge-transactions-1), [GET Status API](https://docs.midtrans.com/docs/get-status-api-requests), and [HTTP Notification & Signature Verification](https://docs.midtrans.com/docs/https-notification-webhooks).
+
 ## Required Edge Function secrets
 
 See `functions/.env.example`. Required values:
 - Supabase-provided `SUPABASE_URL` and server secret/service-role key.
 - `MIDTRANS_ENVIRONMENT`: `sandbox` or `production`.
 - `MIDTRANS_SERVER_KEY`.
-- `MIDTRANS_DEFAULT_PAYMENT_TYPE` or a frontend `preferredChannel`.
+- `MIDTRANS_DEFAULT_PAYMENT_TYPE` (the current storefront uses this configured default payment type).
 - `MIDTRANS_CHANNEL_CONFIG_JSON` matching the chosen payment type.
 
 Optional:
