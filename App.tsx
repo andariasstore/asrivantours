@@ -333,7 +333,9 @@ function createAsrivaServices(runtimeConfig, addAuditLog, authSession) {
         headers: {
           'Content-Type': 'application/json',
           apikey: supabaseAnonKey,
-          Authorization: `Bearer ${authSession?.access_token || supabaseAnonKey}`,
+          ...(authSession?.access_token
+            ? { Authorization: `Bearer ${authSession.access_token}` }
+            : {}),
         },
         body: JSON.stringify(payload),
       });
