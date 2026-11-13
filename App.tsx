@@ -114,20 +114,23 @@ const readStoredAuthSession = (storageKey) => {
 const bookingAccessStorageKey = (bookingReference) =>
   `asriva:booking-access:${bookingReference}`;
 
-const readBookingAccessToken = (bookingReference) => {
-  if (!bookingReference || typeof window === 'undefined') return '';
+const readBookingAccessEntry = (bookingReference) => {
+  if (!bookingReference || typeof window === 'undefined') return null;
   try {
     const key = bookingAccessStorageKey(bookingReference);
     const stored = JSON.parse(window.sessionStorage.getItem(key) || 'null');
     if (!stored?.token || !stored?.expiresAt || stored.expiresAt <= Date.now()) {
       window.sessionStorage.removeItem(key);
-      return '';
+      return null;
     }
-    return stored.token;
+    return stored;
   } catch {
-    return '';
+    return null;
   }
 };
+
+const readBookingAccessToken = (bookingReference) =>
+  readBookingAccessEntry(bookingReference)?.token || '';
 
 // ============================================================================
 // 3. API CONTRACTS & RUNTIME CONFIGURATION STORE
@@ -4038,10 +4041,13 @@ export default function App() {
   const saveBookingRecord = useCallback((booking, accessToken = null, accessExpiresAt = null) => {
     if (!booking?.bookingReference) return;
     const freshToken = accessToken || booking.bookingAccessToken || '';
-    const token = freshToken || readBookingAccessToken(booking.bookingReference);
+    const existingAccess = readBookingAccessEntry(booking.bookingReference);
+    const token = freshToken || existingAccess?.token || '';
+    const expiry = accessExpiresAt
+      ? new Date(accessExpiresAt).getTime()
+      : Number(booking.bookingAccessExpiresAt || existingAccess?.expiresAt || Date.now() + 86400000);
     if (freshToken && typeof window !== 'undefined') {
       try {
-        const expiry = accessExpiresAt ? new Date(accessExpiresAt).getTime() : Date.now() + 86400000;
         window.sessionStorage.setItem(bookingAccessStorageKey(booking.bookingReference), JSON.stringify({
           token: freshToken,
           expiresAt: expiry,
@@ -4050,7 +4056,9 @@ export default function App() {
         console.warn('[ASRIVA_BOOKING_ACCESS_STORAGE]', error);
       }
     }
-    const bookingWithAccess = token ? { ...booking, bookingAccessToken: token } : booking;
+    const bookingWithAccess = token
+      ? { ...booking, bookingAccessToken: token, bookingAccessExpiresAt: expiry }
+      : booking;
     setActiveBookings((prev) => ({
       ...prev,
       [booking.bookingReference]: bookingWithAccess,
