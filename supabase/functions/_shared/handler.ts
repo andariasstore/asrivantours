@@ -115,6 +115,7 @@ function normalizeMidtransStatus(raw: any) {
   const statusCode = String(raw?.status_code ?? "");
   const fraudStatus = String(raw?.fraud_status ?? "").toLowerCase();
   const fraudAccepted = !fraudStatus || fraudStatus === "accept";
+  if (fraudStatus === "deny") return "failed";
   if (status === "settlement" && statusCode === "200" && fraudAccepted) return "settlement";
   if (status === "capture" && statusCode === "200" && fraudAccepted) return "capture";
   if (status === "expire") return "expired";
